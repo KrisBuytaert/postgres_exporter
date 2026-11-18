@@ -1,0 +1,27 @@
+# HELP pg_database_size_bytes Disk space used by the database
+# TYPE pg_database_size_bytes gauge
+pg_database_size_bytes{datname="app",server="127.0.0.1:5433"} 8.813591e+06
+pg_database_size_bytes{datname="postgres",server="127.0.0.1:5433"} 7.830551e+06
+pg_database_size_bytes{datname="template0",server="127.0.0.1:5433"} 7.610895e+06
+pg_database_size_bytes{datname="template1",server="127.0.0.1:5433"} 7.692815e+06
+# HELP pg_exporter_last_scrape_duration_seconds Duration of the last scrape of metrics from PostgreSQL.
+# TYPE pg_exporter_last_scrape_duration_seconds gauge
+pg_exporter_last_scrape_duration_seconds{collector="custom_query.mr"} 0.028562659
+# HELP pg_exporter_last_scrape_error Whether the last scrape of metrics from PostgreSQL resulted in an error (1 for error, 0 for success).
+# TYPE pg_exporter_last_scrape_error gauge
+pg_exporter_last_scrape_error{collector="custom_query.mr"} 0
+# HELP pg_exporter_scrapes_total Total number of times PostgreSQL was scraped for metrics.
+# TYPE pg_exporter_scrapes_total counter
+pg_exporter_scrapes_total{collector="custom_query.mr"} 1
+# HELP pg_exporter_user_queries_load_error Whether the user queries file was loaded and parsed successfully (1 for error, 0 for success).
+# TYPE pg_exporter_user_queries_load_error gauge
+pg_exporter_user_queries_load_error{collector="custom_query.mr",filename="/tmp/tmp.rQl1e4KcPB/medium-resolution/queries-mr.yaml",hashsum="1d4dc1c138d0acc3a8659f095946e18f3c737488c228539f28129659732002e2"} 0
+# HELP pg_postmaster_start_time_seconds Time at which postmaster started
+# TYPE pg_postmaster_start_time_seconds gauge
+pg_postmaster_start_time_seconds{server="127.0.0.1:5433"} 1.795019901e+09
+# HELP pg_replication_lag Replication lag behind master in seconds
+# TYPE pg_replication_lag gauge
+pg_replication_lag{server="127.0.0.1:5433"} 69.958163
+# HELP pg_up Whether the last scrape of metrics from PostgreSQL was able to connect to the server (1 for yes, 0 for no).
+# TYPE pg_up gauge
+pg_up{collector="custom_query.mr"} 1
