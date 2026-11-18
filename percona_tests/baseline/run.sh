@@ -64,7 +64,7 @@ for v in $VERSIONS; do
     -c track_io_timing=on -c wal_level=replica -c max_wal_senders=5 >/dev/null
   until docker exec baseline-primary pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
   sleep 3
-  docker exec baseline-primary sh -c 'echo "host replication all all scram-sha-256" >> "$PGDATA/pg_hba.conf"'
+  docker exec baseline-primary sh -c 'echo "host replication all all md5" >> "$PGDATA/pg_hba.conf"'
   docker exec baseline-primary psql -qU postgres -c 'SELECT pg_reload_conf()' >/dev/null
   # some objects and activity, so per-database and table metrics exist
   docker exec baseline-primary psql -qU postgres -c 'CREATE EXTENSION pg_stat_statements' -c 'CREATE DATABASE app'
@@ -78,8 +78,11 @@ for v in $VERSIONS; do
     -u postgres -e PGPASSWORD=postgres --entrypoint sh postgres:$v -c \
     'pg_basebackup -h baseline-primary -U postgres -D /tmp/data -R -X stream && chmod 700 /tmp/data &&
      exec postgres -D /tmp/data -c shared_preload_libraries=pg_stat_statements -c hot_standby=on' >/dev/null
+  # md5 in pg_hba also accepts scram passwords; PG13 still stores md5
+  n=0; until [ "$(docker exec baseline-primary psql -tAU postgres -c 'SELECT count(*) FROM pg_stat_replication')" = 1 ]; do
+    n=$((n+1)); [ $n -gt 120 ] && { echo "pg$v: replica did not start"; docker logs baseline-replica 2>&1 | tail -3; exit 1; }; sleep 1
+  done
   until docker exec baseline-replica pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
-  until [ "$(docker exec baseline-primary psql -tAU postgres -c 'SELECT count(*) FROM pg_stat_replication')" = 1 ]; do sleep 1; done
 
   measure "$OUT/pg$v/primary" "postgresql://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable"
   measure "$OUT/pg$v/replica" "postgresql://postgres:postgres@127.0.0.1:5433/postgres?sslmode=disable"
