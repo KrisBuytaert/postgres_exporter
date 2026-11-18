@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/blang/semver/v4"
-	"github.com/go-kit/log/level"
 	"github.com/percona/postgres_exporter/distribution"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -74,7 +73,7 @@ func NewServer(dsn string, opts ...ServerOpt) (*Server, error) {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 
-	level.Debug(logger).Log("msg", "Established new database connection", "fingerprint", fingerprint)
+	logger.Debug("Established new database connection", "fingerprint", fingerprint)
 
 	s := &Server{
 		db:     db,
@@ -102,7 +101,7 @@ func (s *Server) Close() error {
 func (s *Server) Ping() error {
 	if err := s.db.Ping(); err != nil {
 		if cerr := s.Close(); cerr != nil {
-			level.Error(logger).Log("msg", "Error while closing non-pinging DB connection", "server", s, "err", cerr)
+			logger.Error("Error while closing non-pinging DB connection", "server", s, "err", cerr)
 		}
 		return err
 	}
@@ -130,9 +129,9 @@ func (s *Server) Scrape(ch chan<- prometheus.Metric, disableSettingsMetrics bool
 	errMap := queryNamespaceMappings(ch, s)
 	if len(errMap) > 0 {
 		err = fmt.Errorf("queryNamespaceMappings returned %d errors", len(errMap))
-		level.Error(logger).Log("msg", "NAMESPACE ERRORS FOUND")
+		logger.Error("NAMESPACE ERRORS FOUND")
 		for namespace, err := range errMap {
-			level.Error(logger).Log("namespace", namespace, "msg", err)
+			logger.Error(err.Error(), "namespace", namespace)
 		}
 	}
 
@@ -193,7 +192,7 @@ func (s *Servers) Close() {
 	defer s.m.Unlock()
 	for _, server := range s.servers {
 		if err := server.Close(); err != nil {
-			level.Error(logger).Log("msg", "Failed to close connection", "server", server, "err", err)
+			logger.Error("Failed to close connection", "server", server, "err", err)
 		}
 	}
 }

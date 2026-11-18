@@ -20,7 +20,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -39,13 +38,13 @@ func (e *Exporter) discoverDatabaseDSNs() []string {
 			var err error
 			dsnURI, err = url.Parse(dsn)
 			if err != nil {
-				level.Error(logger).Log("msg", "Unable to parse DSN as URI", "dsn", loggableDSN(dsn), "err", err)
+				logger.Error("Unable to parse DSN as URI", "dsn", loggableDSN(dsn), "err", err)
 				continue
 			}
 		} else if connstringRe.MatchString(dsn) {
 			dsnConnstring = dsn
 		} else {
-			level.Error(logger).Log("msg", "Unable to parse DSN as either URI or connstring", "dsn", loggableDSN(dsn))
+			logger.Error("Unable to parse DSN as either URI or connstring", "dsn", loggableDSN(dsn))
 			continue
 		}
 		dsns[dsn] = struct{}{}
@@ -96,7 +95,7 @@ func (e *Exporter) discoverDatabaseDSNs() []string {
 func (e *Exporter) getDatabaseNames(dsn string) ([]string, error) {
 	if e.connSema != nil {
 		if err := e.connSema.Acquire(e.ctx, 1); err != nil {
-			level.Warn(logger).Log("msg", "Failed to acquire semaphore", "err", err)
+			logger.Warn("Failed to acquire semaphore", "err", err)
 			return nil, err
 		}
 		defer e.connSema.Release(1)
@@ -104,14 +103,14 @@ func (e *Exporter) getDatabaseNames(dsn string) ([]string, error) {
 
 	server, err := e.GetServer(dsn)
 	if err != nil {
-		level.Error(logger).Log("msg", "Error opening connection to database", "dsn", loggableDSN(dsn), "err", err)
+		logger.Error("Error opening connection to database", "dsn", loggableDSN(dsn), "err", err)
 		return nil, err
 	}
 	defer server.Close()
 
 	dbNames, err := queryDatabases(e.ctx, server)
 	if err != nil {
-		level.Error(logger).Log("msg", "Error querying databases", "dsn", loggableDSN(dsn), "err", err)
+		logger.Error("Error querying databases", "dsn", loggableDSN(dsn), "err", err)
 		return nil, err
 	}
 
@@ -132,7 +131,7 @@ func (e *Exporter) scrapeDSN(ch chan<- prometheus.Metric, dsn string) error {
 
 	// Check if map versions need to be updated
 	if err := e.checkMapVersions(ch, server); err != nil {
-		level.Warn(logger).Log("msg", "Proceeding with outdated query maps, as the Postgres version could not be determined", "err", err)
+		logger.Warn("Proceeding with outdated query maps, as the Postgres version could not be determined", "err", err)
 	}
 
 	return server.Scrape(ch, e.disableSettingsMetrics)

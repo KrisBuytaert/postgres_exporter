@@ -3,7 +3,7 @@ package collector
 import (
 	"context"
 	"database/sql"
-	"github.com/go-kit/log"
+	"log/slog"
 	"github.com/prometheus/client_golang/prometheus"
 	"strconv"
 )
@@ -36,7 +36,7 @@ var pgExtensions = map[string]*prometheus.Desc{
 }
 
 type ExtensionsCollector struct {
-	logger log.Logger
+	logger *slog.Logger
 }
 
 func NewExtensionsCollector(collectorConfig collectorConfig) (Collector, error) {

@@ -14,17 +14,13 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"strings"
 
 	"github.com/alecthomas/kingpin/v2"
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/percona/postgres_exporter/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -59,7 +55,7 @@ var (
 	excludeDatabases   = kingpin.Flag("exclude-databases", "A list of databases to remove when autoDiscoverDatabases is enabled (DEPRECATED)").Default("").Envar("PG_EXPORTER_EXCLUDE_DATABASES").String()
 	includeDatabases   = kingpin.Flag("include-databases", "A list of databases to include when autoDiscoverDatabases is enabled (DEPRECATED)").Default("").Envar("PG_EXPORTER_INCLUDE_DATABASES").String()
 	metricPrefix       = kingpin.Flag("metric-prefix", "A metric prefix can be used to have non-default (not \"pg\") prefixes for each of the metrics").Default("pg").Envar("PG_EXPORTER_METRIC_PREFIX").String()
-	logger             = log.NewNopLogger()
+	logger             = promslog.NewNopLogger()
 )
 
 // Metric name parts.
@@ -77,42 +73,6 @@ const (
 	serverLabelName = "server"
 )
 
-// slogGoKitBridge adapts a *slog.Logger to the go-kit log.Logger interface so
-// the rest of the codebase can keep using go-kit log/level patterns.
-type slogGoKitBridge struct {
-	l *slog.Logger
-}
-
-func (b *slogGoKitBridge) Log(keyvals ...interface{}) error {
-	if len(keyvals) == 0 {
-		return nil
-	}
-	lvl := slog.LevelInfo
-	msg := ""
-	var args []any
-	for i := 0; i+1 < len(keyvals); i += 2 {
-		k := fmt.Sprint(keyvals[i])
-		v := keyvals[i+1]
-		switch k {
-		case "level":
-			switch fmt.Sprint(v) {
-			case "debug":
-				lvl = slog.LevelDebug
-			case "warn":
-				lvl = slog.LevelWarn
-			case "error":
-				lvl = slog.LevelError
-			}
-		case "msg":
-			msg = fmt.Sprint(v)
-		default:
-			args = append(args, k, v)
-		}
-	}
-	b.l.Log(context.Background(), lvl, msg, args...)
-	return nil
-}
-
 func main() {
 	kingpin.Version(version.Print(exporterName))
 	promlogConfig := &promslog.Config{}
@@ -120,7 +80,7 @@ func main() {
 	kingpin.HelpFlag.Short('h')
 	webConfig.WebConfigFile = webConfigFile
 	kingpin.Parse()
-	logger = &slogGoKitBridge{promslog.New(promlogConfig)}
+	logger = promslog.New(promlogConfig)
 
 	if *onlyDumpMaps {
 		dumpMaps()
@@ -130,27 +90,27 @@ func main() {
 	// Load the config file if specified, otherwise use default/DSN settings
 	if *configFile != "" {
 		if err := c.ReloadConfig(*configFile, logger); err != nil {
-			level.Warn(logger).Log("msg", "Error loading config", "err", err)
+			logger.Warn("Error loading config", "err", err)
 		}
 	} else {
-		level.Debug(logger).Log("msg", "No config file provided, using default/DSN settings")
+		logger.Debug("No config file provided, using default/DSN settings")
 	}
 
 	dsns, err := getDataSources()
 	if err != nil {
-		level.Error(logger).Log("msg", "Failed reading data sources", "err", err.Error())
+		logger.Error("Failed reading data sources", "err", err.Error())
 		os.Exit(1)
 	}
 
 	excludedDatabases := strings.Split(*excludeDatabases, ",")
-	logger.Log("msg", "Excluded databases", "databases", fmt.Sprintf("%v", excludedDatabases))
+	logger.Info("Excluded databases", "databases", fmt.Sprintf("%v", excludedDatabases))
 
 	if *autoDiscoverDatabases || *excludeDatabases != "" || *includeDatabases != "" {
-		level.Warn(logger).Log("msg", "Scraping additional databases via auto discovery is DEPRECATED")
+		logger.Warn("Scraping additional databases via auto discovery is DEPRECATED")
 	}
 
 	if *constantLabelsList != "" {
-		level.Warn(logger).Log("msg", "Constant labels on all metrics is DEPRECATED")
+		logger.Warn("Constant labels on all metrics is DEPRECATED")
 	}
 
 	versionCollector := vc.NewCollector(exporterName)
@@ -180,7 +140,7 @@ func main() {
 		}
 		landingPage, err := web.NewLandingPage(landingConfig)
 		if err != nil {
-			level.Error(logger).Log("err", err)
+			logger.Error("error creating landing page", "err", err)
 			os.Exit(1)
 		}
 		http.Handle("/", landingPage)
@@ -188,10 +148,10 @@ func main() {
 
 	http.HandleFunc("/probe", handleProbe(logger, excludedDatabases, connSema))
 
-	level.Info(logger).Log("msg", "Listening on address", "address", *webConfig.WebListenAddresses)
+	logger.Info("Listening on address", "address", *webConfig.WebListenAddresses)
 	srv := &http.Server{}
-	if err := web.ListenAndServe(srv, webConfig, promslog.New(&promslog.Config{})); err != nil {
-		level.Error(logger).Log("msg", "Error running HTTP server", "err", err)
+	if err := web.ListenAndServe(srv, webConfig, logger); err != nil {
+		logger.Error("Error running HTTP server", "err", err)
 		os.Exit(1)
 	}
 }

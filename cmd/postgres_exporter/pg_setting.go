@@ -19,7 +19,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -32,7 +31,7 @@ var (
 
 // Query the pg_settings view containing runtime variables
 func querySettings(ch chan<- prometheus.Metric, server *Server) error {
-	level.Debug(logger).Log("msg", "Querying pg_setting view", "server", server)
+	logger.Debug("Querying pg_setting view", "server", server)
 
 	// pg_settings docs: https://www.postgresql.org/docs/current/static/view-pg-settings.html
 	//
@@ -40,8 +39,8 @@ func querySettings(ch chan<- prometheus.Metric, server *Server) error {
 	// types in normaliseUnit() below
 	//
 	// Settings intentionally ignored due to invalid format:
-	// - `sync_commit_cancel_wait`, specific to Azure Postgres, see https://github.com/prometheus-community/postgres_exporter/issues/523
-	// - `google_dataplex.max_messages`, specific to Google Cloud SQL, see https://github.com/prometheus-community/postgres_exporter/issues/1240
+	// - `sync_commit_cancel_wait`, specific to Azure Postgres, see https://github.com/percona/postgres_exporter/issues/523
+	// - `google_dataplex.max_messages`, specific to Google Cloud SQL, see https://github.com/percona/postgres_exporter/issues/1240
 	query := "SELECT name, setting, COALESCE(unit, ''), short_desc, vartype FROM pg_settings WHERE vartype IN ('bool', 'integer', 'real') AND name NOT IN ('sync_commit_cancel_wait', 'google_dataplex.max_messages');"
 
 	rows, err := server.db.Query(query)
@@ -106,7 +105,7 @@ func (s *pgSetting) metric(labels prometheus.Labels) prometheus.Metric {
 
 // Removes units from any of the setting values.
 // This is mostly because of a irregularity regarding AWS RDS Aurora
-// https://github.com/prometheus-community/postgres_exporter/issues/619
+// https://github.com/percona/postgres_exporter/issues/619
 func (s *pgSetting) sanitizeValue() {
 	for _, unit := range settingUnits {
 		if strings.HasSuffix(s.setting, unit) {

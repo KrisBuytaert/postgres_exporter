@@ -6,7 +6,6 @@ require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/blang/semver/v4 v4.0.0
-	github.com/go-kit/log v0.2.1
 	github.com/lib/pq v1.12.3
 	github.com/montanaflynn/stats v0.14.0
 	github.com/pkg/errors v0.9.1
@@ -29,7 +28,6 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.7.0 // indirect
-	github.com/go-logfmt/logfmt v0.6.1 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gopherjs/gopherjs v1.17.2 // indirect
