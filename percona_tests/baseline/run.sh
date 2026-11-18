@@ -23,23 +23,10 @@ scrape() { curl -s -m 120 "http://127.0.0.1:$PORT/$1"; }
 # series without values, sorted: what the sync must not lose
 series() { grep -v '^#' | sed -E 's/ [^ ]+( [0-9]+)?$//' | sort -u; }
 
-for v in $VERSIONS; do
-  d=$OUT/pg$v; mkdir -p "$d"
-  docker rm -f baseline-pg >/dev/null 2>&1 || true
-  docker run -d --name baseline-pg -p 127.0.0.1:5432:5432 \
-    -e POSTGRES_PASSWORD=postgres postgres:$v \
-    -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all \
-    -c track_io_timing=on >/dev/null
-  until docker exec baseline-pg pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
-  sleep 3
-  # some objects and activity, so per-database and table metrics exist
-  docker exec baseline-pg psql -qU postgres -c 'CREATE EXTENSION pg_stat_statements' -c 'CREATE DATABASE app'
-  docker exec baseline-pg psql -qU postgres -d app \
-    -c 'CREATE TABLE t (id serial PRIMARY KEY, v text)' \
-    -c "INSERT INTO t (v) SELECT md5(i::text) FROM generate_series(1,10000) i" \
-    -c 'ANALYZE t' -c 'SELECT count(*) FROM t' >/dev/null
-
-  DATA_SOURCE_NAME="postgresql://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable" \
+# run the exporter against one server and record every endpoint into $1
+measure() {
+  d=$1; dsn=$2; mkdir -p "$d"
+  DATA_SOURCE_NAME="$dsn" \
   "$BIN" --web.listen-address=127.0.0.1:$PORT \
     --auto-discover-databases \
     --exclude-databases=template0,template1,postgres,cloudsqladmin,pmm-managed-dev,azure_maintenance,rdsadmin \
@@ -62,8 +49,43 @@ for v in $VERSIONS; do
     for i in 1 2 3 4 5; do curl -s -m 120 -o /dev/null -w '%{time_total}\n' "http://127.0.0.1:$PORT/$path"; done \
       | sort -n | sed -n 3p > "$d/$name.scrape-median-seconds"
   done
-
   kill $pid; wait $pid 2>/dev/null || true
-  docker rm -f baseline-pg >/dev/null
-  echo "pg$v: $(wc -l < "$d/default.series") series, default scrape $(cat "$d/default.scrape-median-seconds")s"
+}
+
+cleanup() { docker rm -f baseline-primary baseline-replica >/dev/null 2>&1 || true; }
+docker network create baseline-net >/dev/null 2>&1 || true
+
+for v in $VERSIONS; do
+  cleanup
+  # primary, with streaming replication enabled
+  docker run -d --name baseline-primary --network baseline-net -p 127.0.0.1:5432:5432 \
+    -e POSTGRES_PASSWORD=postgres postgres:$v \
+    -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all \
+    -c track_io_timing=on -c wal_level=replica -c max_wal_senders=5 >/dev/null
+  until docker exec baseline-primary pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
+  sleep 3
+  docker exec baseline-primary sh -c 'echo "host replication all all scram-sha-256" >> "$PGDATA/pg_hba.conf"'
+  docker exec baseline-primary psql -qU postgres -c 'SELECT pg_reload_conf()' >/dev/null
+  # some objects and activity, so per-database and table metrics exist
+  docker exec baseline-primary psql -qU postgres -c 'CREATE EXTENSION pg_stat_statements' -c 'CREATE DATABASE app'
+  docker exec baseline-primary psql -qU postgres -d app \
+    -c 'CREATE TABLE t (id serial PRIMARY KEY, v text)' \
+    -c "INSERT INTO t (v) SELECT md5(i::text) FROM generate_series(1,10000) i" \
+    -c 'ANALYZE t' -c 'SELECT count(*) FROM t' >/dev/null
+
+  # streaming replica, cloned from the primary
+  docker run -d --name baseline-replica --network baseline-net -p 127.0.0.1:5433:5432 \
+    -u postgres -e PGPASSWORD=postgres --entrypoint sh postgres:$v -c \
+    'pg_basebackup -h baseline-primary -U postgres -D /tmp/data -R -X stream && chmod 700 /tmp/data &&
+     exec postgres -D /tmp/data -c shared_preload_libraries=pg_stat_statements -c hot_standby=on' >/dev/null
+  until docker exec baseline-replica pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
+  until [ "$(docker exec baseline-primary psql -tAU postgres -c 'SELECT count(*) FROM pg_stat_replication')" = 1 ]; do sleep 1; done
+
+  measure "$OUT/pg$v/primary" "postgresql://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable"
+  measure "$OUT/pg$v/replica" "postgresql://postgres:postgres@127.0.0.1:5433/postgres?sslmode=disable"
+  cleanup
+  for r in primary replica; do
+    echo "pg$v $r: $(wc -l < "$OUT/pg$v/$r/default.series") series, default scrape $(cat "$OUT/pg$v/$r/default.scrape-median-seconds")s"
+  done
 done
+docker network rm baseline-net >/dev/null 2>&1 || true
