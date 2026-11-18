@@ -1,3 +1,0 @@
-time=2026-11-18T15:48:00.970Z level=WARN source=main.go:112 msg="Scraping additional databases via auto discovery is DEPRECATED"
-time=2026-11-18T15:48:00.971Z level=INFO source=tls_config.go:395 msg="Listening on" address=127.0.0.1:19187
-time=2026-11-18T15:48:00.972Z level=INFO source=tls_config.go:398 msg="TLS is disabled." http2=false address=127.0.0.1:19187

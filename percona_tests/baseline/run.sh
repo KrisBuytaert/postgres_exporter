@@ -76,7 +76,7 @@ for v in $VERSIONS; do
   # streaming replica, cloned from the primary
   docker run -d --name baseline-replica --network baseline-net -p 127.0.0.1:5433:5432 \
     -u postgres -e PGPASSWORD=postgres --entrypoint sh postgres:$v -c \
-    'pg_basebackup -h baseline-primary -U postgres -D /tmp/data -R -X stream && chmod 700 /tmp/data &&
+    'pg_basebackup -h baseline-primary -U postgres -D /tmp/data -R -X stream -C -S baseline_slot && chmod 700 /tmp/data &&
      exec postgres -D /tmp/data -c shared_preload_libraries=pg_stat_statements -c hot_standby=on' >/dev/null
   # md5 in pg_hba also accepts scram passwords; PG13 still stores md5
   n=0; until [ "$(docker exec baseline-primary psql -tAU postgres -c 'SELECT count(*) FROM pg_stat_replication')" = 1 ]; do
