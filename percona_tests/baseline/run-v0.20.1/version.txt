@@ -1,0 +1,6 @@
+postgres_exporter, version v0.20.1 (branch: sync/v0.20.1, revision: 60e4a17)
+  build user:       
+  build date:       
+  go version:       go1.26.9
+  platform:         linux/amd64
+  tags:             unknown

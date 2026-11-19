@@ -1,1 +1,0 @@
-time=2026-11-18T16:45:50.610Z level=WARN source=main.go:109 msg="Scraping additional databases via auto discovery is DEPRECATED"

@@ -1,6 +1,0 @@
-postgres_exporter, version 0.15.0-percona-main (branch: main, revision: 22fb54d)
-  build user:       
-  build date:       
-  go version:       go1.26.9
-  platform:         linux/amd64
-  tags:             unknown
