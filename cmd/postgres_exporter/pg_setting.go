@@ -39,8 +39,8 @@ func querySettings(ch chan<- prometheus.Metric, server *Server) error {
 	// types in normaliseUnit() below
 	//
 	// Settings intentionally ignored due to invalid format:
-	// - `sync_commit_cancel_wait`, specific to Azure Postgres, see https://github.com/percona/postgres_exporter/issues/523
-	// - `google_dataplex.max_messages`, specific to Google Cloud SQL, see https://github.com/percona/postgres_exporter/issues/1240
+	// - `sync_commit_cancel_wait`, specific to Azure Postgres, see https://github.com/prometheus-community/postgres_exporter/issues/523
+	// - `google_dataplex.max_messages`, specific to Google Cloud SQL, see https://github.com/prometheus-community/postgres_exporter/issues/1240
 	query := "SELECT name, setting, COALESCE(unit, ''), short_desc, vartype FROM pg_settings WHERE vartype IN ('bool', 'integer', 'real') AND name NOT IN ('sync_commit_cancel_wait', 'google_dataplex.max_messages');"
 
 	rows, err := server.db.Query(query)
@@ -105,7 +105,7 @@ func (s *pgSetting) metric(labels prometheus.Labels) prometheus.Metric {
 
 // Removes units from any of the setting values.
 // This is mostly because of a irregularity regarding AWS RDS Aurora
-// https://github.com/percona/postgres_exporter/issues/619
+// https://github.com/prometheus-community/postgres_exporter/issues/619
 func (s *pgSetting) sanitizeValue() {
 	for _, unit := range settingUnits {
 		if strings.HasSuffix(s.setting, unit) {
