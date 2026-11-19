@@ -1,9 +1,10 @@
-[![Build Status](https://circleci.com/gh/prometheus-community/postgres_exporter.svg?style=svg)](https://circleci.com/gh/prometheus-community/postgres_exporter)
+# PostgreSQL Server Exporter
+
+[![Build Status](https://github.com/prometheus-community/postgres_exporter/actions/workflows/ci.yml/badge.svg)](https://github.com/prometheus-community/postgres_exporter/actions/workflows/ci.yml)
 [![Coverage Status](https://coveralls.io/repos/github/prometheus-community/postgres_exporter/badge.svg?branch=master)](https://coveralls.io/github/prometheus-community/postgres_exporter?branch=master)
 [![Go Report Card](https://goreportcard.com/badge/github.com/percona/postgres_exporter)](https://goreportcard.com/report/github.com/percona/postgres_exporter)
 [![Docker Pulls](https://img.shields.io/docker/pulls/prometheuscommunity/postgres-exporter.svg)](https://hub.docker.com/r/prometheuscommunity/postgres-exporter/tags)
 
-# PostgreSQL Server Exporter
 
 Prometheus exporter for PostgreSQL server metrics.
 
@@ -132,11 +133,20 @@ This will build the docker image as `prometheuscommunity/postgres_exporter:${bra
 * `[no-]collector.replication`
   Enable the `replication` collector (default: enabled).
 
-* `[no-]collector.replication_slot`
-  Enable the `replication_slot` collector (default: enabled).
+* `[no-]collector.replication_slots`
+  Enable the `replication_slots` collector (default: enabled).
+
+* `[no-]collector.settings`
+  Enable the `settings` collector (default: enabled).
+
+* `[no-]collector.stat_activity`
+  Enable the `stat_activity` collector (default: enabled).
 
 * `[no-]collector.stat_activity_autovacuum`
   Enable the `stat_activity_autovacuum` collector (default: disabled).
+
+* `[no-]collector.stat_archiver`
+  Enable the `stat_archiver` collector (default: enabled).
 
 * `[no-]collector.stat_bgwriter`
   Enable the `stat_bgwriter` collector (default: enabled).
@@ -149,6 +159,9 @@ This will build the docker image as `prometheuscommunity/postgres_exporter:${bra
 
 * `[no-]collector.stat_progress_vacuum`
   Enable the `stat_progress_vacuum` collector (default: enabled).
+
+* `[no-]collector.stat_replication`
+  Enable the `stat_replication` collector (default: enabled).
 
 * `[no-]collector.stat_statements`
   Enable the `stat_statements` collector (default: disabled).
@@ -204,9 +217,6 @@ This will build the docker image as `prometheuscommunity/postgres_exporter:${bra
 
 * `disable-default-metrics`
   Use only metrics supplied from `queries.yaml` via `--extend.query-path`.  Default is `false`.
-
-* `disable-settings-metrics`
-  Use the flag if you don't want to scrape `pg_settings`.  Default is `false`.
 
 * `auto-discover-databases` (DEPRECATED)
   Whether to discover the databases on a server dynamically.  Default is `false`.
@@ -280,9 +290,6 @@ The following environment variables configure the exporter:
 
 * `PG_EXPORTER_DISABLE_DEFAULT_METRICS`
   Use only metrics supplied from `queries.yaml`. Value can be `true` or `false`. Default is `false`.
-
-* `PG_EXPORTER_DISABLE_SETTINGS_METRICS`
-  Use the flag if you don't want to scrape `pg_settings`. Value can be `true` or `false`. Default is `false`.
 
 * `PG_EXPORTER_AUTO_DISCOVER_DATABASES` (DEPRECATED)
   Whether to discover the databases on a server dynamically. Value can be `true` or `false`. Default is `false`.

@@ -161,15 +161,7 @@ func (e *ErrorConnectToServer) Error() string {
 // TODO: revisit this with the semver system
 func DumpMaps() {
 	// TODO: make this function part of the exporter
-	for name, cmap := range builtinMetricMaps {
-		query, ok := queryOverrides[name]
-		if !ok {
-			fmt.Println(name)
-		} else {
-			for _, queryOverride := range query {
-				fmt.Println(name, queryOverride.versionRange, queryOverride.query)
-			}
-		}
+	for _, cmap := range builtinMetricMaps {
 
 		for column, details := range cmap.columnMappings {
 			fmt.Printf("  %-40s %v\n", column, details)
@@ -196,92 +188,6 @@ var builtinMetricMaps = map[string]intermediateMetricMap{
 		map[string]ColumnMapping{
 			"blocking_pid": {LABEL, "PID of blocking session", nil, nil},
 			"count":        {GAUGE, "Number of blocked sessions", nil, nil},
-		},
-		true,
-		0,
-	},
-	"pg_stat_replication": {
-		map[string]ColumnMapping{
-			"procpid":                  {DISCARD, "Process ID of a WAL sender process", nil, semver.MustParseRange("<9.2.0")},
-			"pid":                      {DISCARD, "Process ID of a WAL sender process", nil, semver.MustParseRange(">=9.2.0")},
-			"usesysid":                 {DISCARD, "OID of the user logged into this WAL sender process", nil, nil},
-			"usename":                  {DISCARD, "Name of the user logged into this WAL sender process", nil, nil},
-			"application_name":         {LABEL, "Name of the application that is connected to this WAL sender", nil, nil},
-			"client_addr":              {LABEL, "IP address of the client connected to this WAL sender. If this field is null, it indicates that the client is connected via a Unix socket on the server machine.", nil, nil},
-			"client_hostname":          {DISCARD, "Host name of the connected client, as reported by a reverse DNS lookup of client_addr. This field will only be non-null for IP connections, and only when log_hostname is enabled.", nil, nil},
-			"client_port":              {DISCARD, "TCP port number that the client is using for communication with this WAL sender, or -1 if a Unix socket is used", nil, nil},
-			"backend_start":            {DISCARD, "with time zone	Time when this process was started, i.e., when the client connected to this WAL sender", nil, nil},
-			"backend_xmin":             {DISCARD, "The current backend's xmin horizon.", nil, nil},
-			"state":                    {LABEL, "Current WAL sender state", nil, nil},
-			"sent_location":            {DISCARD, "Last transaction log position sent on this connection", nil, semver.MustParseRange("<10.0.0")},
-			"write_location":           {DISCARD, "Last transaction log position written to disk by this standby server", nil, semver.MustParseRange("<10.0.0")},
-			"flush_location":           {DISCARD, "Last transaction log position flushed to disk by this standby server", nil, semver.MustParseRange("<10.0.0")},
-			"replay_location":          {DISCARD, "Last transaction log position replayed into the database on this standby server", nil, semver.MustParseRange("<10.0.0")},
-			"sent_lsn":                 {DISCARD, "Last transaction log position sent on this connection", nil, semver.MustParseRange(">=10.0.0")},
-			"write_lsn":                {DISCARD, "Last transaction log position written to disk by this standby server", nil, semver.MustParseRange(">=10.0.0")},
-			"flush_lsn":                {DISCARD, "Last transaction log position flushed to disk by this standby server", nil, semver.MustParseRange(">=10.0.0")},
-			"replay_lsn":               {DISCARD, "Last transaction log position replayed into the database on this standby server", nil, semver.MustParseRange(">=10.0.0")},
-			"sync_priority":            {DISCARD, "Priority of this standby server for being chosen as the synchronous standby", nil, nil},
-			"sync_state":               {DISCARD, "Synchronous state of this standby server", nil, nil},
-			"slot_name":                {LABEL, "A unique, cluster-wide identifier for the replication slot", nil, semver.MustParseRange(">=9.2.0")},
-			"plugin":                   {DISCARD, "The base name of the shared object containing the output plugin this logical slot is using, or null for physical slots", nil, nil},
-			"slot_type":                {DISCARD, "The slot type - physical or logical", nil, nil},
-			"datoid":                   {DISCARD, "The OID of the database this slot is associated with, or null. Only logical slots have an associated database", nil, nil},
-			"database":                 {DISCARD, "The name of the database this slot is associated with, or null. Only logical slots have an associated database", nil, nil},
-			"active":                   {DISCARD, "True if this slot is currently actively being used", nil, nil},
-			"active_pid":               {DISCARD, "Process ID of a WAL sender process", nil, nil},
-			"xmin":                     {DISCARD, "The oldest transaction that this slot needs the database to retain. VACUUM cannot remove tuples deleted by any later transaction", nil, nil},
-			"catalog_xmin":             {DISCARD, "The oldest transaction affecting the system catalogs that this slot needs the database to retain. VACUUM cannot remove catalog tuples deleted by any later transaction", nil, nil},
-			"restart_lsn":              {DISCARD, "The address (LSN) of oldest WAL which still might be required by the consumer of this slot and thus won't be automatically removed during checkpoints", nil, nil},
-			"pg_current_xlog_location": {DISCARD, "pg_current_xlog_location", nil, nil},
-			"pg_current_wal_lsn":       {DISCARD, "pg_current_xlog_location", nil, semver.MustParseRange(">=10.0.0")},
-			"pg_current_wal_lsn_bytes": {GAUGE, "WAL position in bytes", nil, semver.MustParseRange(">=10.0.0")},
-			"pg_xlog_location_diff":    {GAUGE, "Lag in bytes between master and slave", nil, semver.MustParseRange(">=9.2.0 <10.0.0")},
-			"pg_wal_lsn_diff":          {GAUGE, "Lag in bytes between master and slave", nil, semver.MustParseRange(">=10.0.0")},
-			"confirmed_flush_lsn":      {DISCARD, "LSN position a consumer of a slot has confirmed flushing the data received", nil, nil},
-			"write_lag":                {DISCARD, "Time elapsed between flushing recent WAL locally and receiving notification that this standby server has written it (but not yet flushed it or applied it). This can be used to gauge the delay that synchronous_commit level remote_write incurred while committing if this server was configured as a synchronous standby.", nil, semver.MustParseRange(">=10.0.0")},
-			"flush_lag":                {DISCARD, "Time elapsed between flushing recent WAL locally and receiving notification that this standby server has written and flushed it (but not yet applied it). This can be used to gauge the delay that synchronous_commit level remote_flush incurred while committing if this server was configured as a synchronous standby.", nil, semver.MustParseRange(">=10.0.0")},
-			"replay_lag":               {DISCARD, "Time elapsed between flushing recent WAL locally and receiving notification that this standby server has written, flushed and applied it. This can be used to gauge the delay that synchronous_commit level remote_apply incurred while committing if this server was configured as a synchronous standby.", nil, semver.MustParseRange(">=10.0.0")},
-		},
-		true,
-		0,
-	},
-	"pg_replication_slots": {
-		map[string]ColumnMapping{
-			"slot_name":       {LABEL, "Name of the replication slot", nil, nil},
-			"database":        {LABEL, "Name of the database", nil, nil},
-			"active":          {GAUGE, "Flag indicating if the slot is active", nil, nil},
-			"pg_wal_lsn_diff": {GAUGE, "Replication lag in bytes", nil, nil},
-		},
-		true,
-		0,
-	},
-	"pg_stat_archiver": {
-		map[string]ColumnMapping{
-			"archived_count":     {COUNTER, "Number of WAL files that have been successfully archived", nil, nil},
-			"last_archived_wal":  {DISCARD, "Name of the last WAL file successfully archived", nil, nil},
-			"last_archived_time": {DISCARD, "Time of the last successful archive operation", nil, nil},
-			"failed_count":       {COUNTER, "Number of failed attempts for archiving WAL files", nil, nil},
-			"last_failed_wal":    {DISCARD, "Name of the WAL file of the last failed archival operation", nil, nil},
-			"last_failed_time":   {DISCARD, "Time of the last failed archival operation", nil, nil},
-			"stats_reset":        {DISCARD, "Time at which these statistics were last reset", nil, nil},
-			"last_archive_age":   {GAUGE, "Time in seconds since last WAL segment was successfully archived", nil, nil},
-		},
-		true,
-		0,
-	},
-	"pg_stat_activity": {
-		map[string]ColumnMapping{
-			"datname":            {LABEL, "Name of this database", nil, nil},
-			"state":              {LABEL, "connection state", nil, semver.MustParseRange(">=9.2.0")},
-			"usename":            {LABEL, "connection usename", nil, nil},
-			"application_name":   {LABEL, "connection application_name", nil, nil},
-			"backend_type":       {LABEL, "connection backend_type", nil, nil},
-			"wait_event_type":    {LABEL, "connection wait_event_type", nil, nil},
-			"wait_event":         {LABEL, "connection wait_event", nil, nil},
-			"count":              {GAUGE, "number of connections in this state", nil, nil},
-			"max_tx_duration":    {GAUGE, "max duration in seconds any active transaction has been running", nil, nil},
-			"max_state_duration": {GAUGE, "max state change duration in seconds any active transaction has been", nil, nil},
 		},
 		true,
 		0,
@@ -440,7 +346,7 @@ type Exporter struct {
 	// only, since it just points to the global.
 	builtinMetricMaps map[string]intermediateMetricMap
 
-	disableDefaultMetrics, disableSettingsMetrics, autoDiscoverDatabases bool
+	disableDefaultMetrics, autoDiscoverDatabases bool
 
 	excludeDatabases []string
 	includeDatabases []string
@@ -506,13 +412,6 @@ func WithContext(ctx context.Context) ExporterOpt {
 func WithConnectionsSemaphore(sem *semaphore.Weighted) ExporterOpt {
 	return func(e *Exporter) {
 		e.connSema = sem
-	}
-}
-
-// DisableSettingsMetrics configures pg_settings export.
-func DisableSettingsMetrics(b bool) ExporterOpt {
-	return func(e *Exporter) {
-		e.disableSettingsMetrics = b
 	}
 }
 
@@ -696,13 +595,6 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 // CloseServers is a no-op in the Percona build: connections are opened per
 // scrape in scrapeDSN and closed there, so there is no server pool to close.
 func (e *Exporter) CloseServers() {}
-
-func newDesc(subsystem, name, help string, labels prometheus.Labels) *prometheus.Desc {
-	return prometheus.NewDesc(
-		prometheus.BuildFQName(namespace, subsystem, name),
-		help, nil, labels,
-	)
-}
 
 func checkPostgresVersion(db *sql.DB, server string, logger *slog.Logger) (semver.Version, string, error) {
 	logger.Debug("Querying PostgreSQL version", "server", server)

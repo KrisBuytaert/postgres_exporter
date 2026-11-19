@@ -3,6 +3,7 @@
 name: golangci-lint
 on:
   push:
+    branches: [main, master, 'release-*']
     paths:
       - "go.sum"
       - "go.mod"
@@ -10,6 +11,7 @@ on:
       - "scripts/errcheck_excludes.txt"
       - ".github/workflows/golangci-lint.yml"
       - ".golangci.yml"
+    tags: ['v*']
   pull_request:
 
 permissions:  # added using https://github.com/step-security/secure-repo

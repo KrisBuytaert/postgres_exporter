@@ -68,7 +68,6 @@ func handleProbe(logger *slog.Logger, excludeDatabases []string, connSema *semap
 
 		opts := []exporter.ExporterOpt{
 			exporter.DisableDefaultMetrics(*disableDefaultMetrics),
-			exporter.DisableSettingsMetrics(*disableSettingsMetrics),
 			exporter.AutoDiscoverDatabases(*autoDiscoverDatabases),
 			// exporter.WithUserQueriesPath(*queriesPath),
 			exporter.WithConstantLabels(*constantLabelsList),

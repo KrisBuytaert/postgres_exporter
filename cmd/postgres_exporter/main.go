@@ -35,9 +35,7 @@ import (
 )
 
 var (
-	c = config.Handler{
-		Config: &config.Config{},
-	}
+	c = newConfigHandler()
 
 	// Default is empty so you don't need a config file if using only DSN settings.
 	configFile    = kingpin.Flag("config.file", "Postgres exporter configuration file.").Default("").String()
@@ -48,7 +46,7 @@ var (
 	).Default("").String() // added for compatibility reasons to not break it in PMM 2.
 	metricsPath            = kingpin.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").Envar("PG_EXPORTER_WEB_TELEMETRY_PATH").String()
 	disableDefaultMetrics  = kingpin.Flag("disable-default-metrics", "Do not include default metrics.").Default("false").Envar("PG_EXPORTER_DISABLE_DEFAULT_METRICS").Bool()
-	disableSettingsMetrics = kingpin.Flag("disable-settings-metrics", "Do not include pg_settings metrics.").Default("false").Envar("PG_EXPORTER_DISABLE_SETTINGS_METRICS").Bool()
+	disableSettingsMetrics = kingpin.Flag("disable-settings-metrics", "No effect since v0.20: pg_settings is the settings collector, use --no-collector.settings.").Default("false").Envar("PG_EXPORTER_DISABLE_SETTINGS_METRICS").Bool()
 	autoDiscoverDatabases  = kingpin.Flag("auto-discover-databases", "Whether to discover the databases on a server dynamically. (DEPRECATED)").Default("false").Envar("PG_EXPORTER_AUTO_DISCOVER_DATABASES").Bool()
 	// queriesPath            = kingpin.Flag("extend.query-path", "Path to custom queries to run. (DEPRECATED)").Default("").Envar("PG_EXPORTER_EXTEND_QUERY_PATH").String()
 	onlyDumpMaps       = kingpin.Flag("dumpmaps", "Do not run, simply dump the maps.").Bool()
@@ -62,6 +60,14 @@ var (
 
 // The name of the exporter.
 const exporterName = "postgres_exporter"
+
+func newConfigHandler() *config.Handler {
+	handler, err := config.NewHandler(prometheus.DefaultRegisterer)
+	if err != nil {
+		panic(err)
+	}
+	return handler
+}
 
 func main() {
 	kingpin.Version(version.Print(exporterName))

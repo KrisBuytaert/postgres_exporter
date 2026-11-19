@@ -122,7 +122,6 @@ func makeRegistry(ctx context.Context, dsns []string, connSema *semaphore.Weight
 			exporter.CollectorName("exporter"),
 			exporter.WithConstantLabels(*constantLabelsList), // This option depends on collectors name, so keep it after exporter.CollectorName option
 			exporter.DisableDefaultMetrics(*disableDefaultMetrics),
-			exporter.DisableSettingsMetrics(*disableSettingsMetrics),
 			exporter.IncludeDatabases(*includeDatabases),
 		)...)
 		registry.MustRegister(defaultExporter)
@@ -136,7 +135,6 @@ func makeRegistry(ctx context.Context, dsns []string, connSema *semaphore.Weight
 				exporter.WithUserQueriesEnabled(exporter.HR),
 				exporter.WithEnabled(*collectCustomQueryHr),
 				exporter.DisableDefaultMetrics(true),
-				exporter.DisableSettingsMetrics(true),
 				exporter.WithUserQueriesPath(queriesPath),
 			)...)
 		registry.MustRegister(hrExporter)
@@ -151,7 +149,6 @@ func makeRegistry(ctx context.Context, dsns []string, connSema *semaphore.Weight
 				exporter.WithUserQueriesEnabled(exporter.MR),
 				exporter.WithEnabled(*collectCustomQueryMr),
 				exporter.DisableDefaultMetrics(true),
-				exporter.DisableSettingsMetrics(true),
 				exporter.WithUserQueriesPath(queriesPath),
 			)...)
 		registry.MustRegister(mrExporter)
@@ -165,7 +162,6 @@ func makeRegistry(ctx context.Context, dsns []string, connSema *semaphore.Weight
 				exporter.WithUserQueriesEnabled(exporter.LR),
 				exporter.WithEnabled(*collectCustomQueryLr),
 				exporter.DisableDefaultMetrics(true),
-				exporter.DisableSettingsMetrics(true),
 				exporter.WithUserQueriesPath(queriesPath),
 			)...)
 		registry.MustRegister(lrExporter)
