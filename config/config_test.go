@@ -24,7 +24,7 @@ func TestLoadConfig(t *testing.T) {
 
 	err := ch.ReloadConfig("testdata/config-good.yaml", nil)
 	if err != nil {
-		t.Errorf("Error loading config: %s", err)
+		t.Errorf("error loading config: %s", err)
 	}
 }
 

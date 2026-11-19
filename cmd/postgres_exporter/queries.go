@@ -167,7 +167,8 @@ var queryOverrides = map[string][]OverrideQuery{
 					count(*) AS count,
 					MAX(EXTRACT(EPOCH FROM now() - xact_start))::float AS max_tx_duration,
 					MAX(EXTRACT(EPOCH FROM now() - state_change))::float AS max_state_duration
-				FROM pg_stat_activity WHERE query not like 'autovacuum:%'
+				FROM pg_stat_activity
+				WHERE query not like 'autovacuum:%' AND pid <> pg_backend_pid()
 				GROUP BY datname,state,usename,application_name,backend_type,wait_event_type,wait_event) AS tmp2
 				ON tmp.state = tmp2.state AND pg_database.datname = tmp2.datname
 			`,
@@ -183,7 +184,9 @@ var queryOverrides = map[string][]OverrideQuery{
 				COALESCE(count(*),0) AS count,
 				COALESCE(MAX(EXTRACT(EPOCH FROM now() - xact_start))::float,0) AS max_tx_duration,
 				COALESCE(MAX(EXTRACT(EPOCH FROM now() - state_change))::float,0) AS max_state_duration
-			FROM pg_stat_activity GROUP BY datname,usename,application_name
+			FROM pg_stat_activity
+			WHERE procpid <> pg_backend_pid()
+			GROUP BY datname,usename,application_name
 			`,
 		},
 	},
