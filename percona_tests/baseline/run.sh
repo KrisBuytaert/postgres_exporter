@@ -37,9 +37,9 @@ measure() {
   pid=$!
   until scrape metrics >/dev/null 2>&1; do sleep 1; done
 
-  # the same endpoints pmm-agent scrapes, plus the plain default
+  # the same collect[] groups pmm-managed configures (scrape_configs.go), plus the plain default
   for e in "default:metrics" \
-           "hr:metrics?collect%5B%5D=custom_query.hr&collect%5B%5D=exporter&collect%5B%5D=standard.go&collect%5B%5D=standard.process" \
+           "hr:metrics?collect%5B%5D=exporter&collect%5B%5D=custom_query.hr&collect%5B%5D=standard.go&collect%5B%5D=standard.process&collect%5B%5D=postgres" \
            "mr:metrics?collect%5B%5D=custom_query.mr" \
            "lr:metrics?collect%5B%5D=custom_query.lr"; do
     name=${e%%:*}; path=${e#*:}
