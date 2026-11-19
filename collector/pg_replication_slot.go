@@ -18,6 +18,7 @@ import (
 	"database/sql"
 	"log/slog"
 
+	"github.com/blang/semver/v4"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -81,8 +82,19 @@ var (
 		"availability of WAL files claimed by this slot",
 		[]string{"slot_name", "slot_type", "wal_status"}, nil,
 	)
-
 	pgReplicationSlotQuery = `SELECT
+		slot_name,
+		plugin,
+		slot_type,
+		CASE WHEN pg_is_in_recovery() THEN
+		    pg_last_wal_receive_lsn() - '0/0'
+		ELSE
+		    pg_current_wal_lsn() - '0/0'
+		END AS current_wal_lsn,
+		COALESCE(confirmed_flush_lsn, '0/0') - '0/0' AS confirmed_flush_lsn,
+		active
+	FROM pg_replication_slots;`
+	pgReplicationSlotNewQuery = `SELECT
 		slot_name,
 		plugin,
 		slot_type,
@@ -99,9 +111,15 @@ var (
 )
 
 func (PGReplicationSlotCollector) Update(ctx context.Context, instance *instance, ch chan<- prometheus.Metric) error {
+	query := pgReplicationSlotQuery
+	abovePG13 := instance.version.GTE(semver.MustParse("13.0.0"))
+	if abovePG13 {
+		query = pgReplicationSlotNewQuery
+	}
+
 	db := instance.getDB()
 	rows, err := db.QueryContext(ctx,
-		pgReplicationSlotQuery)
+		query)
 	if err != nil {
 		return err
 	}
@@ -116,7 +134,23 @@ func (PGReplicationSlotCollector) Update(ctx context.Context, instance *instance
 		var plugin sql.NullString
 		var safeWalSize sql.NullInt64
 		var walStatus sql.NullString
-		if err := rows.Scan(&slotName, &plugin, &slotType, &walLSN, &flushLSN, &isActive, &safeWalSize, &walStatus); err != nil {
+
+		r := []any{
+			&slotName,
+			&plugin,
+			&slotType,
+			&walLSN,
+			&flushLSN,
+			&isActive,
+		}
+
+		if abovePG13 {
+			r = append(r, &safeWalSize)
+			r = append(r, &walStatus)
+		}
+
+		err := rows.Scan(r...)
+		if err != nil {
 			return err
 		}
 

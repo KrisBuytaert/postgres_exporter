@@ -71,7 +71,7 @@ type pgSetting struct {
 func (s *pgSetting) metric(labels prometheus.Labels) prometheus.Metric {
 	var (
 		err       error
-		name      = strings.ReplaceAll(s.name, ".", "_")
+		name      = strings.ReplaceAll(strings.ReplaceAll(s.name, ".", "_"), "-", "_")
 		unit      = s.unit // nolint: ineffassign
 		shortDesc = fmt.Sprintf("Server Parameter: %s", s.name)
 		subsystem = "settings"

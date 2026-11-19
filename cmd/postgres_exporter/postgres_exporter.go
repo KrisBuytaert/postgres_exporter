@@ -260,8 +260,11 @@ var builtinMetricMaps = map[string]intermediateMetricMap{
 		map[string]ColumnMapping{
 			"datname":            {LABEL, "Name of this database", nil, nil},
 			"state":              {LABEL, "connection state", nil, semver.MustParseRange(">=9.2.0")},
-			"usename":            {LABEL, "Name of the user logged into this backend", nil, nil},
-			"application_name":   {LABEL, "Name of the application that is connected to this backend", nil, nil},
+			"usename":            {LABEL, "connection usename", nil, nil},
+			"application_name":   {LABEL, "connection application_name", nil, nil},
+			"backend_type":       {LABEL, "connection backend_type", nil, nil},
+			"wait_event_type":    {LABEL, "connection wait_event_type", nil, nil},
+			"wait_event":         {LABEL, "connection wait_event", nil, nil},
 			"count":              {GAUGE, "number of connections in this state", nil, nil},
 			"max_tx_duration":    {GAUGE, "max duration in seconds any active transaction has been running", nil, nil},
 			"max_state_duration": {GAUGE, "max state change duration in seconds any active transaction has been", nil, nil},
@@ -767,7 +770,7 @@ func (e *Exporter) scrape(ch chan<- prometheus.Metric) {
 			if err := e.scrapeDSN(ch, dsn); err != nil {
 				errorsCount.Add(1)
 
-				logger.Error("error scraping dsn", "err", err, "dsn", dsn)
+				logger.Error("error scraping dsn", "err", err, "dsn", loggableDSN(dsn))
 
 				if _, ok := err.(*ErrorConnectToServer); ok {
 					connectionErrorsCount.Add(1)
