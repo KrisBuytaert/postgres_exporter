@@ -13,7 +13,7 @@
 
 //go:build !integration
 
-package main
+package exporter
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
@@ -237,17 +237,15 @@ func (s *PgSettingSuite) TestNormaliseUnit(c *C) {
 }
 
 func (s *PgSettingSuite) TestMetric(c *C) {
-	defer func() {
-		if r := recover(); r != nil {
-			if r.(error).Error() != `unknown unit for runtime variable: "nonexistent"` {
-				panic(r)
-			}
-		}
-	}()
-
 	for _, f := range fixtures {
+		if f.n.err != "" {
+			continue
+		}
 		d := &dto.Metric{}
-		m := f.p.metric(prometheus.Labels{})
+		m, err := f.p.metric(prometheus.Labels{})
+		if err != nil {
+			c.Fatalf("Error creating metric: %v", err)
+		}
 		m.Write(d) // nolint: errcheck
 
 		c.Check(m.Desc().String(), Equals, f.d)

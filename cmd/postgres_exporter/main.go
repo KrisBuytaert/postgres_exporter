@@ -1,4 +1,4 @@
-// Copyright 2021 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -22,6 +22,7 @@ import (
 
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/percona/postgres_exporter/config"
+	"github.com/percona/postgres_exporter/exporter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	vc "github.com/prometheus/client_golang/prometheus/collectors/version"
@@ -55,23 +56,12 @@ var (
 	excludeDatabases   = kingpin.Flag("exclude-databases", "A list of databases to remove when autoDiscoverDatabases is enabled (DEPRECATED)").Default("").Envar("PG_EXPORTER_EXCLUDE_DATABASES").String()
 	includeDatabases   = kingpin.Flag("include-databases", "A list of databases to include when autoDiscoverDatabases is enabled (DEPRECATED)").Default("").Envar("PG_EXPORTER_INCLUDE_DATABASES").String()
 	metricPrefix       = kingpin.Flag("metric-prefix", "A metric prefix can be used to have non-default (not \"pg\") prefixes for each of the metrics").Default("pg").Envar("PG_EXPORTER_METRIC_PREFIX").String()
+	collectionTimeout  = kingpin.Flag("collection-timeout", "Timeout for collecting the statistics when the database is slow").Default("1m").Envar("PG_EXPORTER_COLLECTION_TIMEOUT").String()
 	logger             = promslog.NewNopLogger()
 )
 
-// Metric name parts.
-const (
-	// Namespace for all metrics.
-	namespace = "pg"
-	// Subsystems.
-	exporter = "exporter"
-	// The name of the exporter.
-	exporterName = "postgres_exporter"
-	// Metric label used for static string data thats handy to send to Prometheus
-	// e.g. version
-	staticLabelName = "static"
-	// Metric label used for server identification.
-	serverLabelName = "server"
-)
+// The name of the exporter.
+const exporterName = "postgres_exporter"
 
 func main() {
 	kingpin.Version(version.Print(exporterName))
@@ -83,7 +73,7 @@ func main() {
 	logger = promslog.New(promlogConfig)
 
 	if *onlyDumpMaps {
-		dumpMaps()
+		exporter.DumpMaps()
 		return
 	}
 
@@ -96,7 +86,7 @@ func main() {
 		logger.Debug("No config file provided, using default/DSN settings")
 	}
 
-	dsns, err := getDataSources()
+	dsns, err := exporter.GetDataSources()
 	if err != nil {
 		logger.Error("Failed reading data sources", "err", err.Error())
 		os.Exit(1)

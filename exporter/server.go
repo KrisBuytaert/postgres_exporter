@@ -11,17 +11,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package exporter
 
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/blang/semver/v4"
 	"github.com/percona/postgres_exporter/distribution"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/promslog"
 )
 
 // Server describes a connection to Postgres.
@@ -44,6 +46,7 @@ type Server struct {
 	// Currently cached metrics
 	metricCache map[string]cachedMetrics
 	cacheMtx    sync.Mutex
+	logger      *slog.Logger
 }
 
 // ServerOpt configures a server.
@@ -56,6 +59,12 @@ func ServerWithLabels(labels prometheus.Labels) ServerOpt {
 			s.labels[k] = v
 		}
 		s.labels["collector"] = "exporter"
+	}
+}
+
+func ServerWithLogger(logger *slog.Logger) ServerOpt {
+	return func(s *Server) {
+		s.logger = logger
 	}
 }
 
@@ -73,8 +82,6 @@ func NewServer(dsn string, opts ...ServerOpt) (*Server, error) {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 
-	logger.Debug("Established new database connection", "fingerprint", fingerprint)
-
 	s := &Server{
 		db:     db,
 		master: false,
@@ -82,12 +89,15 @@ func NewServer(dsn string, opts ...ServerOpt) (*Server, error) {
 			serverLabelName: fingerprint,
 		},
 		metricCache: make(map[string]cachedMetrics),
+		logger:      promslog.NewNopLogger(),
 	}
 	s.distribution = distribution.Get(dsn, db)
 
 	for _, opt := range opts {
 		opt(s)
 	}
+
+	s.logger.Debug("Established new database connection", "fingerprint", fingerprint)
 
 	return s, nil
 }
@@ -101,7 +111,7 @@ func (s *Server) Close() error {
 func (s *Server) Ping() error {
 	if err := s.db.Ping(); err != nil {
 		if cerr := s.Close(); cerr != nil {
-			logger.Error("Error while closing non-pinging DB connection", "server", s, "err", cerr)
+			s.logger.Error("Error while closing non-pinging DB connection", "server", s, "err", cerr)
 		}
 		return err
 	}
@@ -193,7 +203,7 @@ func (s *Servers) Close() {
 	defer s.m.Unlock()
 	for _, server := range s.servers {
 		if err := server.Close(); err != nil {
-			logger.Error("Failed to close connection", "server", server, "err", err)
+			server.logger.Error("Failed to close connection", "server", server, "err", err)
 		}
 	}
 }

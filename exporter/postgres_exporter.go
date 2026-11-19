@@ -11,13 +11,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package exporter
 
 import (
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"regexp"
 	"strings"
@@ -29,6 +30,19 @@ import (
 	"github.com/percona/postgres_exporter/internal/versioncache"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/semaphore"
+)
+
+// Metric name parts.
+const (
+	// Namespace for all metrics.
+	namespace = "pg"
+	// Subsystems.
+	exporter = "exporter"
+	// Metric label used for static string data thats handy to send to Prometheus
+	// e.g. version
+	staticLabelName = "static"
+	// Metric label used for server identification.
+	serverLabelName = "server"
 )
 
 // ColumnUsage should be one of several enum values which describe how a
@@ -145,7 +159,7 @@ func (e *ErrorConnectToServer) Error() string {
 }
 
 // TODO: revisit this with the semver system
-func dumpMaps() {
+func DumpMaps() {
 	// TODO: make this function part of the exporter
 	for name, cmap := range builtinMetricMaps {
 		query, ok := queryOverrides[name]
@@ -275,13 +289,13 @@ var builtinMetricMaps = map[string]intermediateMetricMap{
 }
 
 // Turn the MetricMap column mapping into a prometheus descriptor mapping.
-func makeDescMap(pgVersion semver.Version, serverLabels prometheus.Labels, metricMaps map[string]intermediateMetricMap) map[string]MetricMapNamespace {
+func makeDescMap(pgVersion semver.Version, serverLabels prometheus.Labels, metricMaps map[string]intermediateMetricMap, logger *slog.Logger, metricPrefix string) map[string]MetricMapNamespace {
 	var metricMap = make(map[string]MetricMapNamespace)
 
 	for namespace, intermediateMappings := range metricMaps {
 		thisMap := make(map[string]MetricMap)
 
-		namespace = strings.Replace(namespace, "pg", *metricPrefix, 1)
+		namespace = strings.Replace(namespace, "pg", metricPrefix, 1)
 
 		// Get the constant labels
 		var variableLabels []string
@@ -324,7 +338,7 @@ func makeDescMap(pgVersion semver.Version, serverLabels prometheus.Labels, metri
 					vtype: prometheus.CounterValue,
 					desc:  prometheus.NewDesc(fmt.Sprintf("%s_%s", namespace, columnName), columnMapping.description, variableLabels, serverLabels),
 					conversion: func(in interface{}) (float64, bool) {
-						return dbToFloat64(in)
+						return dbToFloat64(in, logger)
 					},
 				}
 			case GAUGE:
@@ -332,7 +346,7 @@ func makeDescMap(pgVersion semver.Version, serverLabels prometheus.Labels, metri
 					vtype: prometheus.GaugeValue,
 					desc:  prometheus.NewDesc(fmt.Sprintf("%s_%s", namespace, columnName), columnMapping.description, variableLabels, serverLabels),
 					conversion: func(in interface{}) (float64, bool) {
-						return dbToFloat64(in)
+						return dbToFloat64(in, logger)
 					},
 				}
 			case HISTOGRAM:
@@ -341,7 +355,7 @@ func makeDescMap(pgVersion semver.Version, serverLabels prometheus.Labels, metri
 					vtype:     prometheus.UntypedValue,
 					desc:      prometheus.NewDesc(fmt.Sprintf("%s_%s", namespace, columnName), columnMapping.description, variableLabels, serverLabels),
 					conversion: func(in interface{}) (float64, bool) {
-						return dbToFloat64(in)
+						return dbToFloat64(in, logger)
 					},
 				}
 				thisMap[columnName+"_bucket"] = MetricMap{
@@ -445,6 +459,9 @@ type Exporter struct {
 	connSema  *semaphore.Weighted
 	ctx       context.Context
 	masterDSN string
+
+	logger       *slog.Logger
+	metricPrefix string
 }
 
 // ExporterOpt configures Exporter.
@@ -532,7 +549,7 @@ func WithUserQueriesPath(p map[MetricResolution]string) ExporterOpt {
 // WithConstantLabels configures constant labels.
 func WithConstantLabels(s string) ExporterOpt {
 	return func(e *Exporter) {
-		e.constantLabels = parseConstLabels(s)
+		e.constantLabels = parseConstLabels(s, e.logger)
 		if e.collectorName != "" {
 			e.constantLabels["collector"] = e.collectorName
 		} else {
@@ -541,7 +558,14 @@ func WithConstantLabels(s string) ExporterOpt {
 	}
 }
 
-func parseConstLabels(s string) prometheus.Labels {
+// WithMetricPrefix configures metric prefix.
+func WithMetricPrefix(prefix string) ExporterOpt {
+	return func(e *Exporter) {
+		e.metricPrefix = prefix
+	}
+}
+
+func parseConstLabels(s string, logger *slog.Logger) prometheus.Labels {
 	labels := make(prometheus.Labels)
 
 	s = strings.TrimSpace(s)
@@ -568,12 +592,13 @@ func parseConstLabels(s string) prometheus.Labels {
 }
 
 // NewExporter returns a new PostgreSQL exporter for the provided DSN.
-func NewExporter(dsn []string, opts ...ExporterOpt) *Exporter {
+func NewExporter(dsn []string, logger *slog.Logger, opts ...ExporterOpt) *Exporter {
 	e := &Exporter{
 		dsn:               dsn,
 		builtinMetricMaps: builtinMetricMaps,
 		enabled:           true,
 		ctx:               context.Background(),
+		logger:            logger,
 	}
 
 	for _, opt := range opts {
@@ -668,6 +693,10 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	e.userQueriesError.Collect(ch)
 }
 
+// CloseServers is a no-op in the Percona build: connections are opened per
+// scrape in scrapeDSN and closed there, so there is no server pool to close.
+func (e *Exporter) CloseServers() {}
+
 func newDesc(subsystem, name, help string, labels prometheus.Labels) *prometheus.Desc {
 	return prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, subsystem, name),
@@ -675,7 +704,7 @@ func newDesc(subsystem, name, help string, labels prometheus.Labels) *prometheus
 	)
 }
 
-func checkPostgresVersion(db *sql.DB, server string) (semver.Version, string, error) {
+func checkPostgresVersion(db *sql.DB, server string, logger *slog.Logger) (semver.Version, string, error) {
 	logger.Debug("Querying PostgreSQL version", "server", server)
 	versionRow := db.QueryRow("SELECT version();")
 	var versionString string
@@ -693,13 +722,15 @@ func checkPostgresVersion(db *sql.DB, server string) (semver.Version, string, er
 
 // Check and update the exporters query maps if the version has changed.
 func (e *Exporter) checkMapVersions(ch chan<- prometheus.Metric, server *Server) error {
-	semanticVersion, versionString, err := versioncache.GetVersion(server.db, server.String(), checkPostgresVersion)
+	semanticVersion, versionString, err := versioncache.GetVersion(server.db, server.String(), func(db *sql.DB, s string) (semver.Version, string, error) {
+		return checkPostgresVersion(db, s, e.logger)
+	})
 	if err != nil {
 		return fmt.Errorf("Error fetching version string on %q: %v", server, err)
 	}
 
 	if !e.disableDefaultMetrics && semanticVersion.LT(lowestSupportedVersion) {
-		logger.Warn("PostgreSQL version is lower than our lowest supported version", "server", server, "version", semanticVersion, "lowest_supported_version", lowestSupportedVersion)
+		e.logger.Warn("PostgreSQL version is lower than our lowest supported version", "server", server, "version", semanticVersion, "lowest_supported_version", lowestSupportedVersion)
 	}
 
 	// Check if semantic version changed and recalculate maps if needed.
@@ -709,8 +740,8 @@ func (e *Exporter) checkMapVersions(ch chan<- prometheus.Metric, server *Server)
 
 	// Get Default Metrics only for master database
 	if !e.disableDefaultMetrics && server.master {
-		server.metricMap = makeDescMap(semanticVersion, server.labels, e.builtinMetricMaps)
-		server.queryOverrides = makeQueryOverrideMap(semanticVersion, queryOverrides)
+		server.metricMap = makeDescMap(semanticVersion, server.labels, e.builtinMetricMaps, server.logger, e.metricPrefix)
+		server.queryOverrides = makeQueryOverrideMap(semanticVersion, queryOverrides, server.logger)
 	} else {
 		server.metricMap = make(map[string]MetricMapNamespace)
 		server.queryOverrides = make(map[string]string)
@@ -762,7 +793,7 @@ func (e *Exporter) scrape(ch chan<- prometheus.Metric) {
 
 			if e.connSema != nil {
 				if err := e.connSema.Acquire(e.ctx, 1); err != nil {
-					logger.Warn("Failed to acquire semaphore", "err", err)
+					e.logger.Warn("Failed to acquire semaphore", "err", err)
 					return
 				}
 				defer e.connSema.Release(1)
@@ -770,7 +801,7 @@ func (e *Exporter) scrape(ch chan<- prometheus.Metric) {
 			if err := e.scrapeDSN(ch, dsn); err != nil {
 				errorsCount.Add(1)
 
-				logger.Error("error scraping dsn", "err", err, "dsn", loggableDSN(dsn))
+				e.logger.Error("error scraping dsn", "err", err, "dsn", loggableDSN(dsn))
 
 				if _, ok := err.(*ErrorConnectToServer); ok {
 					connectionErrorsCount.Add(1)

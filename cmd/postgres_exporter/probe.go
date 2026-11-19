@@ -20,6 +20,7 @@ import (
 
 	"github.com/percona/postgres_exporter/collector"
 	"github.com/percona/postgres_exporter/config"
+	"github.com/percona/postgres_exporter/exporter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/sync/semaphore"
@@ -65,20 +66,21 @@ func handleProbe(logger *slog.Logger, excludeDatabases []string, connSema *semap
 
 		registry := prometheus.NewRegistry()
 
-		opts := []ExporterOpt{
-			DisableDefaultMetrics(*disableDefaultMetrics),
-			DisableSettingsMetrics(*disableSettingsMetrics),
-			AutoDiscoverDatabases(*autoDiscoverDatabases),
-			// WithUserQueriesPath(*queriesPath),
-			WithConstantLabels(*constantLabelsList),
-			ExcludeDatabases(excludeDatabases),
-			IncludeDatabases(*includeDatabases),
-			WithContext(ctx),
-			WithConnectionsSemaphore(connSema),
+		opts := []exporter.ExporterOpt{
+			exporter.DisableDefaultMetrics(*disableDefaultMetrics),
+			exporter.DisableSettingsMetrics(*disableSettingsMetrics),
+			exporter.AutoDiscoverDatabases(*autoDiscoverDatabases),
+			// exporter.WithUserQueriesPath(*queriesPath),
+			exporter.WithConstantLabels(*constantLabelsList),
+			exporter.ExcludeDatabases(excludeDatabases),
+			exporter.IncludeDatabases(*includeDatabases),
+			exporter.WithMetricPrefix(*metricPrefix),
+			exporter.WithContext(ctx),
+			exporter.WithConnectionsSemaphore(connSema),
 		}
 
 		dsns := []string{dsn.GetConnectionString()}
-		exporter := NewExporter(dsns, opts...)
+		exporter := exporter.NewExporter(dsns, logger, opts...)
 
 		// defer func() {
 		// 	exporter.servers.Close()

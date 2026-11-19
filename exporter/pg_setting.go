@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package exporter
 
 import (
 	"fmt"
@@ -31,7 +31,7 @@ var (
 
 // Query the pg_settings view containing runtime variables
 func querySettings(ch chan<- prometheus.Metric, server *Server) error {
-	logger.Debug("Querying pg_setting view", "server", server)
+	server.logger.Debug("Querying pg_setting view", "server", server)
 
 	// pg_settings docs: https://www.postgresql.org/docs/current/static/view-pg-settings.html
 	//
@@ -55,8 +55,15 @@ func querySettings(ch chan<- prometheus.Metric, server *Server) error {
 		if err != nil {
 			return fmt.Errorf("Error retrieving rows on %q: %s %v", server, namespace, err)
 		}
-
-		ch <- s.metric(server.labels)
+		metric, err := s.metric(server.labels)
+		if err != nil {
+			// Log the error and continue
+			// This could be due to a bad value in the setting
+			// but we should not fail the entire scrape or panic
+			server.logger.Warn("Error normalising unit for setting", "setting", s.name, "value", s.setting, "unit", s.unit, "error", err)
+			continue
+		}
+		ch <- metric
 	}
 
 	return nil
@@ -68,7 +75,7 @@ type pgSetting struct {
 	name, setting, unit, shortDesc, vartype string
 }
 
-func (s *pgSetting) metric(labels prometheus.Labels) prometheus.Metric {
+func (s *pgSetting) metric(labels prometheus.Labels) (prometheus.Metric, error) {
 	var (
 		err       error
 		name      = strings.ReplaceAll(strings.ReplaceAll(s.name, ".", "_"), "-", "_")
@@ -85,9 +92,7 @@ func (s *pgSetting) metric(labels prometheus.Labels) prometheus.Metric {
 		}
 	case "integer", "real":
 		if val, unit, err = s.normaliseUnit(); err != nil {
-			// Panic, since we should recognise all units
-			// and don't want to silently exlude metrics
-			panic(err)
+			return nil, err
 		}
 
 		if len(unit) > 0 {
@@ -95,12 +100,11 @@ func (s *pgSetting) metric(labels prometheus.Labels) prometheus.Metric {
 			shortDesc = fmt.Sprintf("%s [Units converted to %s.]", shortDesc, unit)
 		}
 	default:
-		// Panic because we got a type we didn't ask for
-		panic(fmt.Sprintf("Unsupported vartype %q", s.vartype))
+		return nil, fmt.Errorf("pgsetting: unsupported vartype %q", s.vartype)
 	}
 
 	desc := newDesc(subsystem, name, shortDesc, labels)
-	return prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, val)
+	return prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, val), nil
 }
 
 // Removes units from any of the setting values.

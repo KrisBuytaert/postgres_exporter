@@ -18,17 +18,24 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/blang/semver/v4"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const statStatementsSubsystem = "stat_statements"
+const (
+	statStatementsSubsystem = "stat_statements"
+	defaultStatementLimit   = "100"
+)
 
 var (
-	includeQueryFlag    *bool = nil
-	statementLengthFlag *uint = nil
+	includeQueryFlag      *bool   = nil
+	statementLengthFlag   *uint   = nil
+	statementLimitFlag    *uint   = nil
+	excludedDatabasesFlag *string = nil
+	excludedUsersFlag     *string = nil
 )
 
 func init() {
@@ -47,19 +54,58 @@ func init() {
 		"Maximum length of the statement text.").
 		Default("120").
 		Uint()
+	statementLimitFlag = kingpin.Flag(
+		fmt.Sprint(collectorFlagPrefix, statStatementsSubsystem, ".limit"),
+		"Maximum number of statements to return.").
+		Default(defaultStatementLimit).
+		Uint()
+	excludedDatabasesFlag = kingpin.Flag(
+		fmt.Sprint(collectorFlagPrefix, statStatementsSubsystem, ".exclude_databases"),
+		"Comma-separated list of database names to exclude. (default: none)").
+		Default("").
+		String()
+	excludedUsersFlag = kingpin.Flag(
+		fmt.Sprint(collectorFlagPrefix, statStatementsSubsystem, ".exclude_users"),
+		"Comma-separated list of user names to exclude. (default: none)").
+		Default("").
+		String()
 }
 
 type PGStatStatementsCollector struct {
 	log                   *slog.Logger
 	includeQueryStatement bool
 	statementLength       uint
+	statementLimit        uint
+	excludedDatabases     []string
+	excludedUsers         []string
 }
 
 func NewPGStatStatementsCollector(config collectorConfig) (Collector, error) {
+	var excludedDatabases []string
+	if *excludedDatabasesFlag != "" {
+		for db := range strings.SplitSeq(*excludedDatabasesFlag, ",") {
+			if trimmed := strings.TrimSpace(db); trimmed != "" {
+				excludedDatabases = append(excludedDatabases, trimmed)
+			}
+		}
+	}
+
+	var excludedUsers []string
+	if *excludedUsersFlag != "" {
+		for user := range strings.SplitSeq(*excludedUsersFlag, ",") {
+			if trimmed := strings.TrimSpace(user); trimmed != "" {
+				excludedUsers = append(excludedUsers, trimmed)
+			}
+		}
+	}
+
 	return &PGStatStatementsCollector{
 		log:                   config.logger,
 		includeQueryStatement: *includeQueryFlag,
 		statementLength:       *statementLengthFlag,
+		statementLimit:        *statementLimitFlag,
+		excludedDatabases:     excludedDatabases,
+		excludedUsers:         excludedUsers,
 	}, nil
 }
 
@@ -104,7 +150,9 @@ var (
 )
 
 const (
-	pgStatStatementQuerySelect = `LEFT(pg_stat_statements.query, %d) as query,`
+	pgStatStatementQuerySelect      = `LEFT(pg_stat_statements.query, %d) as query,`
+	pgStatStatementExcludeDatabases = `AND pg_database.datname NOT IN (%s) `
+	pgStatStatementExcludeUsers     = `AND pg_get_userbyid(userid) NOT IN (%s) `
 
 	pgStatStatementsQuery = `SELECT
 		pg_get_userbyid(userid) as user,
@@ -125,10 +173,11 @@ const (
 			WITHIN GROUP (ORDER BY total_time)
 			FROM pg_stat_statements
 		)
+		%s %s
 	ORDER BY seconds_total DESC
-	LIMIT 100;`
+	LIMIT %s;`
 
-	pgStatStatementsNewQuery = `SELECT
+	pgStatStatementsQuery_PG13 = `SELECT
 		pg_get_userbyid(userid) as user,
 		pg_database.datname,
 		pg_stat_statements.queryid,
@@ -138,17 +187,18 @@ const (
 		pg_stat_statements.rows as rows_total,
 		pg_stat_statements.blk_read_time / 1000.0 as block_read_seconds_total,
 		pg_stat_statements.blk_write_time / 1000.0 as block_write_seconds_total
-		FROM pg_stat_statements
+		FROM pg_stat_statements(%t)
 	JOIN pg_database
 		ON pg_database.oid = pg_stat_statements.dbid
 	WHERE
 		total_exec_time > (
 		SELECT percentile_cont(0.1)
 			WITHIN GROUP (ORDER BY total_exec_time)
-			FROM pg_stat_statements
+			FROM pg_stat_statements(false)
 		)
+		%s %s
 	ORDER BY seconds_total DESC
-	LIMIT 100;`
+	LIMIT %s;`
 
 	pgStatStatementsQuery_PG17 = `SELECT
 		pg_get_userbyid(userid) as user,
@@ -160,39 +210,48 @@ const (
 		pg_stat_statements.rows as rows_total,
 		pg_stat_statements.shared_blk_read_time / 1000.0 as block_read_seconds_total,
 		pg_stat_statements.shared_blk_write_time / 1000.0 as block_write_seconds_total
-		FROM pg_stat_statements
+		FROM pg_stat_statements(%t)
 	JOIN pg_database
 		ON pg_database.oid = pg_stat_statements.dbid
 	WHERE
 		total_exec_time > (
 		SELECT percentile_cont(0.1)
 			WITHIN GROUP (ORDER BY total_exec_time)
-			FROM pg_stat_statements
+			FROM pg_stat_statements(false)
 		)
+		%s %s
 	ORDER BY seconds_total DESC
-	LIMIT 100;`
+	LIMIT %s;`
 )
 
 func (c PGStatStatementsCollector) Update(ctx context.Context, instance *instance, ch chan<- prometheus.Metric) error {
-	var queryTemplate string
-	switch {
-	case instance.version.GE(semver.MustParse("17.0.0")):
-		queryTemplate = pgStatStatementsQuery_PG17
-	case instance.version.GE(semver.MustParse("13.0.0")):
-		queryTemplate = pgStatStatementsNewQuery
-	default:
-		queryTemplate = pgStatStatementsQuery
-	}
-	var querySelect = ""
+	querySelect := ""
 	if c.includeQueryStatement {
 		querySelect = fmt.Sprintf(pgStatStatementQuerySelect, c.statementLength)
 	}
-	query := fmt.Sprintf(queryTemplate, querySelect)
+	databaseFilter := c.buildExclusionClause(c.excludedDatabases, pgStatStatementExcludeDatabases)
+	userFilter := c.buildExclusionClause(c.excludedUsers, pgStatStatementExcludeUsers)
+	statementLimit := defaultStatementLimit
+	if c.statementLimit > 0 {
+		statementLimit = fmt.Sprintf("%d", c.statementLimit)
+	}
+
+	var query string
+	switch {
+	case instance.version.GE(semver.MustParse("17.0.0")):
+		query = fmt.Sprintf(pgStatStatementsQuery_PG17, querySelect, c.includeQueryStatement, databaseFilter, userFilter, statementLimit)
+	case instance.version.GE(semver.MustParse("13.0.0")):
+		query = fmt.Sprintf(pgStatStatementsQuery_PG13, querySelect, c.includeQueryStatement, databaseFilter, userFilter, statementLimit)
+	default:
+		query = fmt.Sprintf(pgStatStatementsQuery, querySelect, databaseFilter, userFilter, statementLimit)
+	}
 
 	db := instance.getDB()
 	rows, err := db.QueryContext(ctx, query)
 
-	var presentQueryIds = make(map[string]struct{})
+	presentQueryIds := make(map[string]struct{})
+
+	seen := make(map[string]struct{}) // to track duplicates by (user, datname, queryid)
 
 	if err != nil {
 		return err
@@ -224,6 +283,14 @@ func (c PGStatStatementsCollector) Update(ctx context.Context, instance *instanc
 		if queryid.Valid {
 			queryidLabel = queryid.String
 		}
+
+		key := fmt.Sprintf("%s|%s|%s", userLabel, datnameLabel, queryidLabel)
+		_, ok := seen[key]
+		if ok {
+			c.log.Warn("Duplicate found", "user", userLabel, "datname", datnameLabel, "queryid", queryidLabel)
+			continue
+		}
+		seen[key] = struct{}{}
 
 		callsTotalMetric := 0.0
 		if callsTotal.Valid {
@@ -303,4 +370,17 @@ func (c PGStatStatementsCollector) Update(ctx context.Context, instance *instanc
 		return err
 	}
 	return nil
+}
+
+func (c PGStatStatementsCollector) buildExclusionClause(identifiers []string, clauseTemplate string) string {
+	if len(identifiers) == 0 {
+		return ""
+	}
+
+	escaped := make([]string, 0, len(identifiers))
+	for _, identifier := range identifiers {
+		escaped = append(escaped, fmt.Sprintf("'%s'", strings.ReplaceAll(identifier, "'", "''")))
+	}
+
+	return fmt.Sprintf(clauseTemplate, strings.Join(escaped, ", "))
 }

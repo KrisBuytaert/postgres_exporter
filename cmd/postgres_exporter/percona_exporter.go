@@ -2,30 +2,19 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
-	"github.com/blang/semver/v4"
 	"github.com/percona/postgres_exporter/collector"
+	"github.com/percona/postgres_exporter/exporter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/sync/semaphore"
 	"log/slog"
-)
-
-type MetricResolution string
-
-const (
-	LR MetricResolution = "lr"
-	MR MetricResolution = "mr"
-	HR MetricResolution = "hr"
 )
 
 var (
@@ -113,70 +102,70 @@ func makeRegistry(ctx context.Context, dsns []string, connSema *semaphore.Weight
 	excludedDatabases := strings.Split(*excludeDatabases, ",")
 	logger.Info("Excluded databases", "databases", fmt.Sprintf("%v", excludedDatabases))
 
-	queriesPath := map[MetricResolution]string{
-		HR: *collectCustomQueryHrDirectory,
-		MR: *collectCustomQueryMrDirectory,
-		LR: *collectCustomQueryLrDirectory,
+	queriesPath := map[exporter.MetricResolution]string{
+		exporter.HR: *collectCustomQueryHrDirectory,
+		exporter.MR: *collectCustomQueryMrDirectory,
+		exporter.LR: *collectCustomQueryLrDirectory,
 	}
 
-	opts := []ExporterOpt{
-		AutoDiscoverDatabases(*autoDiscoverDatabases),
-		ExcludeDatabases(excludedDatabases),
-		WithConnectionsSemaphore(connSema),
-		WithContext(ctx),
+	opts := []exporter.ExporterOpt{
+		exporter.AutoDiscoverDatabases(*autoDiscoverDatabases),
+		exporter.ExcludeDatabases(excludedDatabases),
+		exporter.WithConnectionsSemaphore(connSema),
+		exporter.WithContext(ctx),
 	}
 
 	if filters.EnableAllCollectors || filters.EnableDefaultCollector {
-		defaultExporter := NewExporter(dsns, append(
+		defaultExporter := exporter.NewExporter(dsns, logger, append(
 			opts,
-			CollectorName("exporter"),
-			WithConstantLabels(*constantLabelsList), // This option depends on collectors name, so keep it after CollectorName option
-			DisableDefaultMetrics(*disableDefaultMetrics),
-			DisableSettingsMetrics(*disableSettingsMetrics),
-			IncludeDatabases(*includeDatabases),
+			exporter.CollectorName("exporter"),
+			exporter.WithConstantLabels(*constantLabelsList), // This option depends on collectors name, so keep it after exporter.CollectorName option
+			exporter.DisableDefaultMetrics(*disableDefaultMetrics),
+			exporter.DisableSettingsMetrics(*disableSettingsMetrics),
+			exporter.IncludeDatabases(*includeDatabases),
 		)...)
 		registry.MustRegister(defaultExporter)
 	}
 
 	if filters.EnableAllCollectors || filters.EnableHRCollector {
-		hrExporter := NewExporter(dsns,
+		hrExporter := exporter.NewExporter(dsns, logger,
 			append(opts,
-				CollectorName("custom_query.hr"),
-				WithConstantLabels(*constantLabelsList), // This option depends on collectors name, so keep it after CollectorName option
-				WithUserQueriesEnabled(HR),
-				WithEnabled(*collectCustomQueryHr),
-				DisableDefaultMetrics(true),
-				DisableSettingsMetrics(true),
-				WithUserQueriesPath(queriesPath),
+				exporter.CollectorName("custom_query.hr"),
+				exporter.WithConstantLabels(*constantLabelsList), // This option depends on collectors name, so keep it after exporter.CollectorName option
+				exporter.WithUserQueriesEnabled(exporter.HR),
+				exporter.WithEnabled(*collectCustomQueryHr),
+				exporter.DisableDefaultMetrics(true),
+				exporter.DisableSettingsMetrics(true),
+				exporter.WithUserQueriesPath(queriesPath),
 			)...)
 		registry.MustRegister(hrExporter)
 
 	}
 
 	if filters.EnableAllCollectors || filters.EnableMRCollector {
-		mrExporter := NewExporter(dsns,
+		mrExporter := exporter.NewExporter(dsns, logger,
 			append(opts,
-				CollectorName("custom_query.mr"),
-				WithConstantLabels(*constantLabelsList), // This option depends on collectors name, so keep it after CollectorName option
-				WithUserQueriesEnabled(MR),
-				WithEnabled(*collectCustomQueryMr),
-				DisableDefaultMetrics(true),
-				DisableSettingsMetrics(true),
-				WithUserQueriesPath(queriesPath),
+				exporter.CollectorName("custom_query.mr"),
+				exporter.WithConstantLabels(*constantLabelsList), // This option depends on collectors name, so keep it after exporter.CollectorName option
+				exporter.WithUserQueriesEnabled(exporter.MR),
+				exporter.WithEnabled(*collectCustomQueryMr),
+				exporter.DisableDefaultMetrics(true),
+				exporter.DisableSettingsMetrics(true),
+				exporter.WithUserQueriesPath(queriesPath),
 			)...)
 		registry.MustRegister(mrExporter)
 	}
 
 	if filters.EnableAllCollectors || filters.EnableLRCollector {
-		lrExporter := NewExporter(dsns,
+		lrExporter := exporter.NewExporter(dsns, logger,
 			append(opts,
-				CollectorName("custom_query.lr"),
-				WithConstantLabels(*constantLabelsList), // This option depends on collectors name, so keep it after CollectorName option
-				WithUserQueriesEnabled(LR),
-				WithEnabled(*collectCustomQueryLr),
-				DisableDefaultMetrics(true),
-				DisableSettingsMetrics(true),
-				WithUserQueriesPath(queriesPath),
+				exporter.CollectorName("custom_query.lr"),
+				exporter.WithConstantLabels(*constantLabelsList), // This option depends on collectors name, so keep it after exporter.CollectorName option
+				exporter.WithUserQueriesEnabled(exporter.LR),
+				exporter.WithEnabled(*collectCustomQueryLr),
+				exporter.DisableDefaultMetrics(true),
+				exporter.DisableSettingsMetrics(true),
+				exporter.WithUserQueriesPath(queriesPath),
 			)...)
 		registry.MustRegister(lrExporter)
 	}
@@ -208,6 +197,7 @@ func makeRegistry(ctx context.Context, dsns []string, connSema *semaphore.Weight
 			[]string{},
 			collector.WithContext(ctx),
 			collector.WithConnectionsSemaphore(connSema),
+			collector.WithCollectionTimeout(*collectionTimeout),
 		)
 		if err != nil {
 			logger.Error("Failed to create PostgresCollector", "err", err.Error())
@@ -217,48 +207,4 @@ func makeRegistry(ctx context.Context, dsns []string, connSema *semaphore.Weight
 	}
 
 	return registry
-}
-
-func (e *Exporter) loadCustomQueries(res MetricResolution, version semver.Version, server *Server) {
-	if e.userQueriesPath[res] != "" {
-		fi, err := os.ReadDir(e.userQueriesPath[res])
-		if err != nil {
-			logger.Error(fmt.Sprintf("failed read dir %q for custom query", e.userQueriesPath[res]),
-				"err", err)
-			return
-		}
-		logger.Debug(fmt.Sprintf("reading dir %q for custom query", e.userQueriesPath[res]))
-
-		for _, v := range fi {
-			if v.IsDir() {
-				continue
-			}
-
-			if filepath.Ext(v.Name()) == ".yml" || filepath.Ext(v.Name()) == ".yaml" {
-				path := filepath.Join(e.userQueriesPath[res], v.Name())
-				e.addCustomQueriesFromFile(path, version, server)
-			}
-		}
-	}
-}
-
-func (e *Exporter) addCustomQueriesFromFile(path string, version semver.Version, server *Server) {
-	// Calculate the hashsum of the useQueries
-	userQueriesData, err := os.ReadFile(path)
-	if err != nil {
-		logger.Error("Failed to reload user queries:"+path, "err", err)
-		e.userQueriesError.WithLabelValues(path, "").Set(1)
-		return
-	}
-
-	hashsumStr := fmt.Sprintf("%x", sha256.Sum256(userQueriesData))
-
-	if err := addQueries(userQueriesData, version, server); err != nil {
-		logger.Error("Failed to reload user queries:"+path, "err", err)
-		e.userQueriesError.WithLabelValues(path, hashsumStr).Set(1)
-		return
-	}
-
-	// Mark user queries as successfully loaded
-	e.userQueriesError.WithLabelValues(path, hashsumStr).Set(0)
 }

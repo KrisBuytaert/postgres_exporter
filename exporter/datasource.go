@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package exporter
 
 import (
 	"fmt"
@@ -39,13 +39,13 @@ func (e *Exporter) discoverDatabaseDSNs() []string {
 			var err error
 			dsnURI, err = url.Parse(dsn)
 			if err != nil {
-				logger.Error("Unable to parse DSN as URI", "dsn", loggableDSN(dsn), "err", err)
+				e.logger.Error("Unable to parse DSN as URI", "dsn", loggableDSN(dsn), "err", err)
 				continue
 			}
 		} else if connstringRe.MatchString(dsn) {
 			dsnConnstring = dsn
 		} else {
-			logger.Error("Unable to parse DSN as either URI or connstring", "dsn", loggableDSN(dsn))
+			e.logger.Error("Unable to parse DSN as either URI or connstring", "dsn", loggableDSN(dsn))
 			continue
 		}
 		dsns[dsn] = struct{}{}
@@ -96,7 +96,7 @@ func (e *Exporter) discoverDatabaseDSNs() []string {
 func (e *Exporter) getDatabaseNames(dsn string) ([]string, error) {
 	if e.connSema != nil {
 		if err := e.connSema.Acquire(e.ctx, 1); err != nil {
-			logger.Warn("Failed to acquire semaphore", "err", err)
+			e.logger.Warn("Failed to acquire semaphore", "err", err)
 			return nil, err
 		}
 		defer e.connSema.Release(1)
@@ -104,14 +104,14 @@ func (e *Exporter) getDatabaseNames(dsn string) ([]string, error) {
 
 	server, err := e.GetServer(dsn)
 	if err != nil {
-		logger.Error("Error opening connection to database", "dsn", loggableDSN(dsn), "err", err)
+		e.logger.Error("Error opening connection to database", "dsn", loggableDSN(dsn), "err", err)
 		return nil, err
 	}
 	defer server.Close()
 
 	dbNames, err := queryDatabases(e.ctx, server)
 	if err != nil {
-		logger.Error("Error querying databases", "dsn", loggableDSN(dsn), "err", err)
+		e.logger.Error("Error querying databases", "dsn", loggableDSN(dsn), "err", err)
 		return nil, err
 	}
 
@@ -132,7 +132,7 @@ func (e *Exporter) scrapeDSN(ch chan<- prometheus.Metric, dsn string) error {
 
 	// Check if map versions need to be updated
 	if err := e.checkMapVersions(ch, server); err != nil {
-		logger.Warn("Proceeding with outdated query maps, as the Postgres version could not be determined", "err", err)
+		e.logger.Warn("Proceeding with outdated query maps, as the Postgres version could not be determined", "err", err)
 	}
 
 	return server.Scrape(ch, e.disableSettingsMetrics)
@@ -142,7 +142,7 @@ func (e *Exporter) scrapeDSN(ch chan<- prometheus.Metric, dsn string) error {
 // DATA_SOURCE_NAME always wins so we do not break older versions
 // reading secrets from files wins over secrets in environment variables
 // DATA_SOURCE_NAME > DATA_SOURCE_{USER|PASS}_FILE > DATA_SOURCE_{USER|PASS}
-func getDataSources() ([]string, error) {
+func GetDataSources() ([]string, error) {
 	var dsn = os.Getenv("DATA_SOURCE_NAME")
 	if len(dsn) != 0 {
 		return strings.Split(dsn, ","), nil

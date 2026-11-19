@@ -93,7 +93,8 @@ type PostgresCollector struct {
 	Collectors map[string]Collector
 	logger     *slog.Logger
 
-	instance *instance
+	instance          *instance
+	CollectionTimeout time.Duration
 
 	connSema *semaphore.Weighted
 	ctx      context.Context
@@ -178,6 +179,20 @@ func WithConnectionsSemaphore(sem *semaphore.Weighted) Option {
 	}
 }
 
+func WithCollectionTimeout(s string) Option {
+	return func(e *PostgresCollector) error {
+		duration, err := time.ParseDuration(s)
+		if err != nil {
+			return err
+		}
+		if duration < 1*time.Millisecond {
+			return errors.New("timeout must be greater than 1ms")
+		}
+		e.CollectionTimeout = duration
+		return nil
+	}
+}
+
 // Describe implements the prometheus.Collector interface.
 func (p PostgresCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- scrapeDurationDesc
@@ -204,12 +219,23 @@ func (p PostgresCollector) Collect(ch chan<- prometheus.Metric) {
 		p.logger.Error("Error opening connection to database", "err", err)
 		return
 	}
+	p.collectFromConnection(inst, ch)
+}
+
+func (p PostgresCollector) collectFromConnection(inst *instance, ch chan<- prometheus.Metric) {
+	// Percona: bound the collection by the HTTP scrape context when one is set.
+	parent := p.ctx
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, p.CollectionTimeout)
+	defer cancel()
 
 	wg := sync.WaitGroup{}
 	wg.Add(len(p.Collectors))
 	for name, c := range p.Collectors {
 		go func(name string, c Collector) {
-			execute(p.ctx, name, c, inst, ch, p.logger)
+			execute(ctx, name, c, inst, ch, p.logger)
 			wg.Done()
 		}(name, c)
 	}

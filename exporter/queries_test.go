@@ -13,9 +13,10 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-package main
+package exporter
 
 import (
+	"github.com/prometheus/common/promslog"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -96,7 +97,7 @@ pg_replication:
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, metricsQueries, err := parseUserQueries([]byte(tc.yamlInput), tc.distribution)
+			_, metricsQueries, err := parseUserQueries([]byte(tc.yamlInput), tc.distribution, promslog.NewNopLogger())
 			require.NoError(t, err)
 			require.Equal(t, tc.wantQuery, metricsQueries["pg_replication"])
 		})
