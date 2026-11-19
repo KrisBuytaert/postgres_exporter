@@ -43,7 +43,8 @@ func TestPGStatActivityCollector(t *testing.T) {
 		"wait_event",
 		"count",
 		"max_tx_duration",
-	}).AddRow("postgres", "active", "postgres", "psql", "client backend", "Lock", "relation", 3, 12.5)
+		"max_state_duration",
+	}).AddRow("postgres", "active", "postgres", "psql", "client backend", "Lock", "relation", 3, 12.5, 4.5)
 	mock.ExpectQuery(sanitizeQuery(statActivityQuery)).WillReturnRows(rows)
 
 	ch := make(chan prometheus.Metric)
@@ -67,6 +68,7 @@ func TestPGStatActivityCollector(t *testing.T) {
 	expected := []MetricResult{
 		{labels: expectedLabels, value: 3, metricType: dto.MetricType_GAUGE},
 		{labels: expectedLabels, value: 12.5, metricType: dto.MetricType_GAUGE},
+		{labels: expectedLabels, value: 4.5, metricType: dto.MetricType_GAUGE},
 	}
 	convey.Convey("Metrics comparison", t, func() {
 		for _, expect := range expected {
@@ -98,7 +100,8 @@ func TestPGStatActivityCollectorNullValues(t *testing.T) {
 		"wait_event",
 		"count",
 		"max_tx_duration",
-	}).AddRow(nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		"max_state_duration",
+	}).AddRow(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	mock.ExpectQuery(sanitizeQuery(statActivityQuery)).WillReturnRows(rows)
 
 	ch := make(chan prometheus.Metric)
@@ -137,7 +140,8 @@ func TestPGStatActivityCollectorBefore92(t *testing.T) {
 		"wait_event",
 		"count",
 		"max_tx_duration",
-	}).AddRow("postgres", "unknown", "postgres", "psql", "", "", "", 2, 7.25)
+		"max_state_duration",
+	}).AddRow("postgres", "unknown", "postgres", "psql", "", "", "", 2, 7.25, 1.5)
 	mock.ExpectQuery(sanitizeQuery(statActivityQueryBefore92)).WillReturnRows(rows)
 
 	ch := make(chan prometheus.Metric)
@@ -161,6 +165,7 @@ func TestPGStatActivityCollectorBefore92(t *testing.T) {
 	expected := []MetricResult{
 		{labels: expectedLabels, value: 2, metricType: dto.MetricType_GAUGE},
 		{labels: expectedLabels, value: 7.25, metricType: dto.MetricType_GAUGE},
+		{labels: expectedLabels, value: 1.5, metricType: dto.MetricType_GAUGE},
 	}
 	convey.Convey("Metrics comparison", t, func() {
 		for _, expect := range expected {

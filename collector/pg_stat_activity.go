@@ -55,6 +55,13 @@ var (
 		statActivityLabels,
 		prometheus.Labels{},
 	)
+	// Percona: kept from the pre-v0.20 built-in map.
+	statActivityMaxStateDurationDesc = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, statActivitySubsystem, "max_state_duration"),
+		"max state change duration in seconds any active transaction has been",
+		statActivityLabels,
+		prometheus.Labels{},
+	)
 
 	statActivityQuery = `
 			SELECT
@@ -66,7 +73,8 @@ var (
 				tmp2.wait_event_type,
 				tmp2.wait_event,
 				COALESCE(count,0) as count,
-				COALESCE(max_tx_duration,0) as max_tx_duration
+				COALESCE(max_tx_duration,0) as max_tx_duration,
+				COALESCE(max_state_duration,0) as max_state_duration
 			FROM
 				(
 				  VALUES ('active'),
@@ -87,9 +95,10 @@ var (
 					wait_event_type,
 					wait_event,
 					count(*) AS count,
-					MAX(EXTRACT(EPOCH FROM now() - xact_start))::float AS max_tx_duration
+					MAX(EXTRACT(EPOCH FROM now() - xact_start))::float AS max_tx_duration,
+					MAX(EXTRACT(EPOCH FROM now() - state_change))::float AS max_state_duration
 				FROM pg_stat_activity
-				WHERE pid <> pg_backend_pid()
+				WHERE query not like 'autovacuum:%' AND pid <> pg_backend_pid()
 				GROUP BY datname,state,usename,application_name,backend_type,wait_event_type,wait_event) AS tmp2
 				ON tmp.state = tmp2.state AND pg_database.datname = tmp2.datname
 			`
@@ -104,7 +113,8 @@ var (
 				'' AS wait_event_type,
 				'' AS wait_event,
 				COALESCE(count(*),0) AS count,
-				COALESCE(MAX(EXTRACT(EPOCH FROM now() - xact_start))::float,0) AS max_tx_duration
+				COALESCE(MAX(EXTRACT(EPOCH FROM now() - xact_start))::float,0) AS max_tx_duration,
+				COALESCE(MAX(EXTRACT(EPOCH FROM now() - state_change))::float,0) AS max_state_duration
 			FROM pg_stat_activity
 			WHERE procpid <> pg_backend_pid()
 			GROUP BY datname,usename,application_name
@@ -126,7 +136,7 @@ func (PGStatActivityCollector) Update(ctx context.Context, instance *instance, c
 
 	for rows.Next() {
 		var datname, state, usename, applicationName, backendType, waitEventType, waitEvent sql.NullString
-		var count, maxTxDuration sql.NullFloat64
+		var count, maxTxDuration, maxStateDuration sql.NullFloat64
 		if err := rows.Scan(
 			&datname,
 			&state,
@@ -137,6 +147,7 @@ func (PGStatActivityCollector) Update(ctx context.Context, instance *instance, c
 			&waitEvent,
 			&count,
 			&maxTxDuration,
+			&maxStateDuration,
 		); err != nil {
 			return err
 		}
@@ -165,6 +176,15 @@ func (PGStatActivityCollector) Update(ctx context.Context, instance *instance, c
 				statActivityMaxTxDurationDesc,
 				prometheus.GaugeValue,
 				maxTxDuration.Float64,
+				labels...,
+			)
+		}
+
+		if maxStateDuration.Valid {
+			ch <- prometheus.MustNewConstMetric(
+				statActivityMaxStateDurationDesc,
+				prometheus.GaugeValue,
+				maxStateDuration.Float64,
 				labels...,
 			)
 		}
