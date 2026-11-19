@@ -113,6 +113,7 @@ func makeRegistry(ctx context.Context, dsns []string, connSema *semaphore.Weight
 		exporter.ExcludeDatabases(excludedDatabases),
 		exporter.WithConnectionsSemaphore(connSema),
 		exporter.WithContext(ctx),
+		exporter.WithMetricPrefix(*metricPrefix),
 	}
 
 	if filters.EnableAllCollectors || filters.EnableDefaultCollector {
