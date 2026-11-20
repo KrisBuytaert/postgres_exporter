@@ -41,6 +41,17 @@ replication_slots collectors, the `server` label (unused by PMM for PostgreSQL).
 This baseline caught one real regression: from v0.19.1 every custom query failed because the Percona
 handler did not pass `--metric-prefix` to its exporters; fixed in cde34e2/60e4a17.
 
+**Revisions after the restack (2026-11-20).** The sync branches were restacked so each one builds on
+the previous one's tip. The runs above used the revisions in the table. Their results carry over:
+
+| Branch | Tested | Now | Tree difference |
+|---|---|---|---|
+| `sync/v0.16.0` | 20d254e | ecb7154 | gofmt only (import order) |
+| `sync/v0.17.1` | c45a1cb | 136b0a2 | gofmt, and the 4 upstream issue links in comments |
+| `sync/v0.18.1` | ef8ccda | a238b10 | gofmt, and the 4 upstream issue links in comments |
+| `sync/v0.19.1` | cde34e2 | 4348588 | none |
+| `sync/v0.20.1` | 60e4a17 | 8c0a184 | none |
+
 `diff.sh <old> <new>` masks labels that change between any two runs (pids, the temporary
 query directory, the walsender pid that upstream exposes as `slot_name` in
 `pg_stat_replication_*`) and compares `pg_stat_activity*` by metric name only, since its
