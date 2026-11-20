@@ -3,8 +3,8 @@ package collector
 import (
 	"context"
 	"database/sql"
-	"log/slog"
 	"github.com/prometheus/client_golang/prometheus"
+	"log/slog"
 	"strconv"
 )
 

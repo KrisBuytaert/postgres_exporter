@@ -13,11 +13,11 @@ import (
 
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/blang/semver/v4"
-	"log/slog"
 	"github.com/percona/postgres_exporter/collector"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/sync/semaphore"
+	"log/slog"
 )
 
 type MetricResolution string

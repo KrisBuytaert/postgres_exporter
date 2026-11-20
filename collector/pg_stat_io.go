@@ -18,8 +18,8 @@ import (
 	"database/sql"
 
 	"github.com/blang/semver/v4"
-	"log/slog"
 	"github.com/prometheus/client_golang/prometheus"
+	"log/slog"
 )
 
 const statIOSubsystem = "stat_io"
